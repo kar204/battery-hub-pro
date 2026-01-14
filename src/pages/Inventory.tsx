@@ -221,7 +221,7 @@ export default function Inventory() {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="product-price">Price ($)</Label>
+                      <Label htmlFor="product-price">Price (₹)</Label>
                       <Input
                         id="product-price"
                         type="number"
@@ -372,10 +372,10 @@ export default function Inventory() {
                         <TableCell className="font-medium">{item.product?.name}</TableCell>
                         <TableCell>{item.product?.model}</TableCell>
                         <TableCell>{item.product?.capacity || '-'}</TableCell>
-                        <TableCell className="text-right">${Number(item.product?.price || 0).toFixed(2)}</TableCell>
+                        <TableCell className="text-right">₹{Number(item.product?.price || 0).toLocaleString('en-IN')}</TableCell>
                         <TableCell className="text-right font-medium">{item.quantity}</TableCell>
                         <TableCell className="text-right">
-                          ${(item.quantity * Number(item.product?.price || 0)).toFixed(2)}
+                          ₹{(item.quantity * Number(item.product?.price || 0)).toLocaleString('en-IN')}
                         </TableCell>
                         <TableCell>
                           {item.quantity < 5 ? (

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Wrench, Package, CheckCircle, AlertTriangle, TrendingUp, DollarSign } from 'lucide-react';
+import { Wrench, Package, CheckCircle, AlertTriangle, TrendingUp, IndianRupee } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { RecentTickets } from '@/components/dashboard/RecentTickets';
@@ -159,7 +159,7 @@ export default function Dashboard() {
           <StatsCard
             title="Stock Value"
             value={`₹${stats.stockValue.toLocaleString('en-IN')}`}
-            icon={DollarSign}
+            icon={IndianRupee}
             variant="default"
             description="Total inventory value"
           />

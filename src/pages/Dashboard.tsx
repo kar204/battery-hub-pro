@@ -158,7 +158,7 @@ export default function Dashboard() {
           />
           <StatsCard
             title="Stock Value"
-            value={`$${stats.stockValue.toLocaleString()}`}
+            value={`₹${stats.stockValue.toLocaleString('en-IN')}`}
             icon={DollarSign}
             variant="default"
             description="Total inventory value"

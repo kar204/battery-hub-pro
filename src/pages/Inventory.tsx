@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Search, Package, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
+import { Plus, Search, Package, ArrowUpCircle, ArrowDownCircle, Download, Trash2 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,9 +14,20 @@ import { Product, WarehouseStock, TransactionType, StockSource } from '@/types/d
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
+import { downloadCSV, formatStockForExport } from '@/utils/exportUtils';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function Inventory() {
-  const { user, hasAnyRole } = useAuth();
+  const { user, hasRole, hasAnyRole } = useAuth();
   const { toast } = useToast();
   const [products, setProducts] = useState<Product[]>([]);
   const [stock, setStock] = useState<WarehouseStock[]>([]);
@@ -24,6 +35,7 @@ export default function Inventory() {
   const [search, setSearch] = useState('');
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [isStockTransferOpen, setIsStockTransferOpen] = useState(false);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
 
   // Product form
   const [productForm, setProductForm] = useState({
@@ -41,6 +53,11 @@ export default function Inventory() {
     source: '' as StockSource | '',
     remarks: '',
   });
+
+  // Role-based restrictions
+  const isWarehouseStaff = hasRole('warehouse_staff');
+  const isProcurementStaff = hasRole('procurement_staff');
+  const isAdmin = hasRole('admin');
 
   useEffect(() => {
     fetchData();
@@ -109,6 +126,32 @@ export default function Inventory() {
     }
   };
 
+  const handleDeleteProduct = async () => {
+    if (!productToDelete) return;
+    
+    try {
+      // First delete the stock entry
+      await supabase
+        .from('warehouse_stock')
+        .delete()
+        .eq('product_id', productToDelete.id);
+
+      // Then delete the product
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productToDelete.id);
+
+      if (error) throw error;
+
+      toast({ title: 'Product deleted successfully' });
+      setProductToDelete(null);
+      fetchData();
+    } catch (error: any) {
+      toast({ title: 'Error deleting product', description: error.message, variant: 'destructive' });
+    }
+  };
+
   const handleStockTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -161,6 +204,11 @@ export default function Inventory() {
     }
   };
 
+  const handleExportAll = () => {
+    const data = filteredStock.map(item => formatStockForExport(item));
+    downloadCSV(data, `inventory-${new Date().toISOString().split('T')[0]}`);
+  };
+
   const filteredStock = stock.filter(item =>
     item.product?.name?.toLowerCase().includes(search.toLowerCase()) ||
     item.product?.model?.toLowerCase().includes(search.toLowerCase())
@@ -168,6 +216,41 @@ export default function Inventory() {
 
   const canManageProducts = hasAnyRole(['admin', 'procurement_staff']);
   const canManageStock = hasAnyRole(['admin', 'warehouse_staff', 'procurement_staff']);
+  const canDeleteProducts = hasRole('admin');
+
+  // Get available transaction types and sources based on role
+  const getTransactionOptions = () => {
+    if (isAdmin) {
+      return {
+        types: [{ value: 'IN', label: 'Stock In' }, { value: 'OUT', label: 'Stock Out' }],
+        sources: [
+          { value: 'SUPPLIER', label: 'Supplier (OEM)' },
+          { value: 'WAREHOUSE', label: 'Warehouse' },
+          { value: 'SHOP', label: 'Shop' }
+        ]
+      };
+    }
+    
+    if (isWarehouseStaff) {
+      // Warehouse: OUT only, from WAREHOUSE to SHOP
+      return {
+        types: [{ value: 'OUT', label: 'Stock Out' }],
+        sources: [{ value: 'SHOP', label: 'Shop' }]
+      };
+    }
+    
+    if (isProcurementStaff) {
+      // Procurement: IN only, from SUPPLIER to WAREHOUSE
+      return {
+        types: [{ value: 'IN', label: 'Stock In' }],
+        sources: [{ value: 'SUPPLIER', label: 'Supplier (OEM)' }]
+      };
+    }
+    
+    return { types: [], sources: [] };
+  };
+
+  const transactionOptions = getTransactionOptions();
 
   return (
     <AppLayout>
@@ -178,6 +261,10 @@ export default function Inventory() {
             <p className="text-muted-foreground">Manage warehouse stock and products</p>
           </div>
           <div className="flex gap-2">
+            <Button variant="outline" onClick={handleExportAll} disabled={filteredStock.length === 0}>
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
             {canManageProducts && (
               <Dialog open={isAddProductOpen} onOpenChange={setIsAddProductOpen}>
                 <DialogTrigger asChild>
@@ -236,7 +323,7 @@ export default function Inventory() {
                 </DialogContent>
               </Dialog>
             )}
-            {canManageStock && (
+            {canManageStock && transactionOptions.types.length > 0 && (
               <Dialog open={isStockTransferOpen} onOpenChange={setIsStockTransferOpen}>
                 <DialogTrigger asChild>
                   <Button>
@@ -246,7 +333,19 @@ export default function Inventory() {
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
-                    <DialogTitle>Stock Transfer</DialogTitle>
+                    <DialogTitle>
+                      Stock Transfer
+                      {isWarehouseStaff && !isAdmin && (
+                        <span className="text-sm font-normal text-muted-foreground block">
+                          Warehouse → Shop (Stock Out only)
+                        </span>
+                      )}
+                      {isProcurementStaff && !isAdmin && (
+                        <span className="text-sm font-normal text-muted-foreground block">
+                          Supplier/OEM → Warehouse (Stock In only)
+                        </span>
+                      )}
+                    </DialogTitle>
                   </DialogHeader>
                   <form onSubmit={handleStockTransfer} className="space-y-4">
                     <div className="space-y-2">
@@ -278,24 +377,25 @@ export default function Inventory() {
                             <SelectValue placeholder="Select type" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="IN">Stock In</SelectItem>
-                            <SelectItem value="OUT">Stock Out</SelectItem>
+                            {transactionOptions.types.map(opt => (
+                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label>Source</Label>
+                        <Label>Destination/Source</Label>
                         <Select 
                           value={transferForm.source} 
                           onValueChange={(value) => setTransferForm({ ...transferForm, source: value as StockSource })}
                         >
                           <SelectTrigger>
-                            <SelectValue placeholder="Select source" />
+                            <SelectValue placeholder="Select" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="SUPPLIER">Supplier</SelectItem>
-                            <SelectItem value="WAREHOUSE">Warehouse</SelectItem>
-                            <SelectItem value="SHOP">Shop</SelectItem>
+                            {transactionOptions.sources.map(opt => (
+                              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
@@ -357,12 +457,13 @@ export default function Inventory() {
                     <TableHead className="text-right">Quantity</TableHead>
                     <TableHead className="text-right">Total Value</TableHead>
                     <TableHead>Status</TableHead>
+                    {canDeleteProducts && <TableHead className="w-[50px]"></TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredStock.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={canDeleteProducts ? 8 : 7} className="text-center text-muted-foreground py-8">
                         No products in inventory
                       </TableCell>
                     </TableRow>
@@ -394,6 +495,18 @@ export default function Inventory() {
                             </Badge>
                           )}
                         </TableCell>
+                        {canDeleteProducts && (
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-destructive hover:text-destructive"
+                              onClick={() => item.product && setProductToDelete(item.product)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
+                        )}
                       </TableRow>
                     ))
                   )}
@@ -402,6 +515,25 @@ export default function Inventory() {
             </CardContent>
           </Card>
         )}
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={!!productToDelete} onOpenChange={() => setProductToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Product?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete "{productToDelete?.name} - {productToDelete?.model}" and its stock record. 
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteProduct} className="bg-destructive text-destructive-foreground">
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </AppLayout>
   );

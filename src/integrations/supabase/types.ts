@@ -118,8 +118,10 @@ export type Database = {
           customer_name: string
           customer_phone: string
           id: string
+          invertor_model: string | null
           issue_description: string
           status: Database["public"]["Enums"]["service_status"]
+          ticket_number: string | null
           updated_at: string
         }
         Insert: {
@@ -130,8 +132,10 @@ export type Database = {
           customer_name: string
           customer_phone: string
           id?: string
+          invertor_model?: string | null
           issue_description: string
           status?: Database["public"]["Enums"]["service_status"]
+          ticket_number?: string | null
           updated_at?: string
         }
         Update: {
@@ -142,8 +146,10 @@ export type Database = {
           customer_name?: string
           customer_phone?: string
           id?: string
+          invertor_model?: string | null
           issue_description?: string
           status?: Database["public"]["Enums"]["service_status"]
+          ticket_number?: string | null
           updated_at?: string
         }
         Relationships: []

@@ -25,9 +25,11 @@ export interface UserRole {
 
 export interface ServiceTicket {
   id: string;
+  ticket_number: string | null;
   customer_name: string;
   customer_phone: string;
   battery_model: string;
+  invertor_model: string | null;
   issue_description: string;
   status: ServiceStatus;
   assigned_to: string | null;

@@ -1,19 +1,31 @@
 import { useEffect, useState } from 'react';
-import { Plus, Search, Filter } from 'lucide-react';
+import { Plus, Search, Filter, Download, Trash2 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
-import { ServiceTicket, ServiceStatus, Profile } from '@/types/database';
+import { ServiceTicket, ServiceStatus, Profile, UserRole } from '@/types/database';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { formatDistanceToNow } from 'date-fns';
+import { PrintTicket } from '@/components/PrintTicket';
+import { downloadCSV, formatTicketForExport } from '@/utils/exportUtils';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const statusColors: Record<string, string> = {
   OPEN: 'bg-chart-1/20 text-chart-1 border-chart-1/30',
@@ -27,23 +39,27 @@ export default function Services() {
   const { toast } = useToast();
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [serviceAgents, setServiceAgents] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
+  const [ticketToDelete, setTicketToDelete] = useState<ServiceTicket | null>(null);
   
   // Form state
   const [formData, setFormData] = useState({
     customer_name: '',
     customer_phone: '',
     battery_model: '',
+    invertor_model: '',
     issue_description: '',
   });
 
   useEffect(() => {
     fetchTickets();
     fetchProfiles();
+    fetchServiceAgents();
 
     const channel = supabase
       .channel('service-tickets-realtime')
@@ -84,27 +100,45 @@ export default function Services() {
     setProfiles((data as Profile[]) || []);
   };
 
+  const fetchServiceAgents = async () => {
+    // Get user_ids of service_agents
+    const { data } = await supabase
+      .from('user_roles')
+      .select('user_id')
+      .eq('role', 'service_agent');
+    
+    setServiceAgents((data || []).map((r: any) => r.user_id));
+  };
+
   const handleCreateTicket = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!user) return;
 
     try {
+      // Find a service agent to auto-assign
+      const serviceAgentId = serviceAgents.length > 0 ? serviceAgents[0] : null;
+
       const { error } = await supabase.from('service_tickets').insert({
-        ...formData,
+        customer_name: formData.customer_name,
+        customer_phone: formData.customer_phone,
+        battery_model: formData.battery_model,
+        invertor_model: formData.invertor_model || null,
+        issue_description: formData.issue_description,
         created_by: user.id,
-        status: 'OPEN',
+        assigned_to: serviceAgentId,
+        status: serviceAgentId ? 'IN_PROGRESS' : 'OPEN',
       });
 
       if (error) throw error;
 
-      // Log the action
       toast({ title: 'Ticket created successfully' });
       setIsCreateOpen(false);
       setFormData({
         customer_name: '',
         customer_phone: '',
         battery_model: '',
+        invertor_model: '',
         issue_description: '',
       });
       fetchTickets();
@@ -122,7 +156,6 @@ export default function Services() {
 
       if (error) throw error;
 
-      // Log the action
       await supabase.from('service_logs').insert({
         ticket_id: ticketId,
         action: `Status changed to ${newStatus}`,
@@ -160,9 +193,42 @@ export default function Services() {
     }
   };
 
+  const handleDeleteTicket = async () => {
+    if (!ticketToDelete) return;
+    
+    try {
+      const { error } = await supabase
+        .from('service_tickets')
+        .delete()
+        .eq('id', ticketToDelete.id);
+
+      if (error) throw error;
+
+      toast({ title: 'Ticket deleted successfully' });
+      setTicketToDelete(null);
+      setSelectedTicket(null);
+      fetchTickets();
+    } catch (error: any) {
+      toast({ title: 'Error deleting ticket', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const handleExportSingle = (ticket: ServiceTicket) => {
+    const data = [formatTicketForExport(ticket, getProfileName(ticket.assigned_to))];
+    downloadCSV(data, `ticket-${ticket.ticket_number || ticket.id}`);
+  };
+
+  const handleExportAll = () => {
+    const data = filteredTickets.map(ticket => 
+      formatTicketForExport(ticket, getProfileName(ticket.assigned_to))
+    );
+    downloadCSV(data, `service-tickets-${new Date().toISOString().split('T')[0]}`);
+  };
+
   const filteredTickets = tickets.filter(ticket =>
     ticket.customer_name.toLowerCase().includes(search.toLowerCase()) ||
-    ticket.battery_model.toLowerCase().includes(search.toLowerCase())
+    ticket.battery_model.toLowerCase().includes(search.toLowerCase()) ||
+    (ticket.ticket_number && ticket.ticket_number.toLowerCase().includes(search.toLowerCase()))
   );
 
   const getProfileName = (userId: string | null) => {
@@ -171,9 +237,13 @@ export default function Services() {
     return profile?.name || 'Unknown';
   };
 
+  // Filter profiles to only show service agents for assignment
+  const serviceAgentProfiles = profiles.filter(p => serviceAgents.includes(p.user_id));
+
   const canCreateTicket = hasAnyRole(['admin', 'counter_staff']);
   const canAssignTicket = hasAnyRole(['admin', 'counter_staff']);
   const canUpdateStatus = hasAnyRole(['admin', 'service_agent', 'counter_staff']);
+  const canDeleteTicket = hasRole('admin');
 
   return (
     <AppLayout>
@@ -183,63 +253,83 @@ export default function Services() {
             <h1 className="text-3xl font-bold tracking-tight">Service Tickets</h1>
             <p className="text-muted-foreground">Manage customer service requests</p>
           </div>
-          {canCreateTicket && (
-            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="h-4 w-4 mr-2" />
-                  New Ticket
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create Service Ticket</DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleCreateTicket} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="customer_name">Customer Name</Label>
-                      <Input
-                        id="customer_name"
-                        value={formData.customer_name}
-                        onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
-                        required
-                      />
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleExportAll} disabled={filteredTickets.length === 0}>
+              <Download className="h-4 w-4 mr-2" />
+              Export All
+            </Button>
+            {canCreateTicket && (
+              <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                <DialogTrigger asChild>
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Ticket
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Create Service Ticket</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleCreateTicket} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="customer_name">Customer Name</Label>
+                        <Input
+                          id="customer_name"
+                          value={formData.customer_name}
+                          onChange={(e) => setFormData({ ...formData, customer_name: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="customer_phone">Phone Number</Label>
+                        <Input
+                          id="customer_phone"
+                          value={formData.customer_phone}
+                          onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="battery_model">Battery Model</Label>
+                        <Input
+                          id="battery_model"
+                          value={formData.battery_model}
+                          onChange={(e) => setFormData({ ...formData, battery_model: e.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="invertor_model">Invertor Model</Label>
+                        <Input
+                          id="invertor_model"
+                          value={formData.invertor_model}
+                          onChange={(e) => setFormData({ ...formData, invertor_model: e.target.value })}
+                          placeholder="Optional"
+                        />
+                      </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="customer_phone">Phone Number</Label>
-                      <Input
-                        id="customer_phone"
-                        value={formData.customer_phone}
-                        onChange={(e) => setFormData({ ...formData, customer_phone: e.target.value })}
+                      <Label htmlFor="issue_description">Issue Description</Label>
+                      <Textarea
+                        id="issue_description"
+                        value={formData.issue_description}
+                        onChange={(e) => setFormData({ ...formData, issue_description: e.target.value })}
                         required
+                        rows={4}
                       />
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="battery_model">Battery Model</Label>
-                    <Input
-                      id="battery_model"
-                      value={formData.battery_model}
-                      onChange={(e) => setFormData({ ...formData, battery_model: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="issue_description">Issue Description</Label>
-                    <Textarea
-                      id="issue_description"
-                      value={formData.issue_description}
-                      onChange={(e) => setFormData({ ...formData, issue_description: e.target.value })}
-                      required
-                      rows={4}
-                    />
-                  </div>
-                  <Button type="submit" className="w-full">Create Ticket</Button>
-                </form>
-              </DialogContent>
-            </Dialog>
-          )}
+                    <p className="text-sm text-muted-foreground">
+                      Ticket will be auto-assigned to a Service Agent
+                    </p>
+                    <Button type="submit" className="w-full">Create Ticket</Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            )}
+          </div>
         </div>
 
         <div className="flex flex-col gap-4 sm:flex-row">
@@ -289,13 +379,21 @@ export default function Services() {
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="space-y-2 flex-1">
                       <div className="flex items-center gap-3">
+                        {ticket.ticket_number && (
+                          <Badge variant="outline" className="font-mono text-xs">
+                            {ticket.ticket_number}
+                          </Badge>
+                        )}
                         <h3 className="font-semibold text-lg">{ticket.customer_name}</h3>
                         <Badge variant="outline" className={statusColors[ticket.status]}>
                           {ticket.status.replace('_', ' ')}
                         </Badge>
                       </div>
                       <p className="text-sm text-muted-foreground">{ticket.customer_phone}</p>
-                      <p className="font-medium">{ticket.battery_model}</p>
+                      <p className="font-medium">
+                        {ticket.battery_model}
+                        {ticket.invertor_model && ` / ${ticket.invertor_model}`}
+                      </p>
                       <p className="text-sm text-muted-foreground line-clamp-2">
                         {ticket.issue_description}
                       </p>
@@ -319,7 +417,14 @@ export default function Services() {
         <Dialog open={!!selectedTicket} onOpenChange={() => setSelectedTicket(null)}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>Ticket Details</DialogTitle>
+              <DialogTitle className="flex items-center gap-3">
+                Ticket Details
+                {selectedTicket?.ticket_number && (
+                  <Badge variant="outline" className="font-mono">
+                    {selectedTicket.ticket_number}
+                  </Badge>
+                )}
+              </DialogTitle>
             </DialogHeader>
             {selectedTicket && (
               <div className="space-y-6">
@@ -337,10 +442,18 @@ export default function Services() {
                     <p className="font-medium">{selectedTicket.battery_model}</p>
                   </div>
                   <div>
+                    <Label className="text-muted-foreground">Invertor Model</Label>
+                    <p className="font-medium">{selectedTicket.invertor_model || '-'}</p>
+                  </div>
+                  <div>
                     <Label className="text-muted-foreground">Status</Label>
                     <Badge variant="outline" className={statusColors[selectedTicket.status]}>
                       {selectedTicket.status.replace('_', ' ')}
                     </Badge>
+                  </div>
+                  <div>
+                    <Label className="text-muted-foreground">Assigned To</Label>
+                    <p className="font-medium">{getProfileName(selectedTicket.assigned_to)}</p>
                   </div>
                 </div>
                 
@@ -349,46 +462,92 @@ export default function Services() {
                   <p className="mt-1">{selectedTicket.issue_description}</p>
                 </div>
 
-                <div className="flex flex-col gap-4 sm:flex-row">
-                  {canAssignTicket && selectedTicket.status === 'OPEN' && (
-                    <Select onValueChange={(value) => handleAssignTicket(selectedTicket.id, value)}>
-                      <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Assign to..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {profiles.map((profile) => (
-                          <SelectItem key={profile.id} value={profile.user_id}>
-                            {profile.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
+                <div className="flex flex-col gap-4 sm:flex-row sm:justify-between">
+                  <div className="flex gap-2">
+                    <PrintTicket 
+                      ticket={selectedTicket} 
+                      profileName={getProfileName(selectedTicket.assigned_to)} 
+                    />
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => handleExportSingle(selectedTicket)}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Export
+                    </Button>
+                    {canDeleteTicket && (
+                      <Button 
+                        variant="destructive" 
+                        size="sm" 
+                        onClick={() => setTicketToDelete(selectedTicket)}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </Button>
+                    )}
+                  </div>
+                  
+                  <div className="flex gap-2 flex-wrap">
+                    {canAssignTicket && selectedTicket.status === 'OPEN' && (
+                      <Select onValueChange={(value) => handleAssignTicket(selectedTicket.id, value)}>
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder="Assign to agent..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {serviceAgentProfiles.map((profile) => (
+                            <SelectItem key={profile.id} value={profile.user_id}>
+                              {profile.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
 
-                  {canUpdateStatus && (
-                    <div className="flex gap-2 flex-wrap">
-                      {selectedTicket.status === 'IN_PROGRESS' && (
-                        <Button 
-                          variant="outline"
-                          onClick={() => handleUpdateStatus(selectedTicket.id, 'RESOLVED')}
-                        >
-                          Mark Resolved
-                        </Button>
-                      )}
-                      {selectedTicket.status === 'RESOLVED' && (
-                        <Button 
-                          onClick={() => handleUpdateStatus(selectedTicket.id, 'CLOSED')}
-                        >
-                          Close Ticket
-                        </Button>
-                      )}
-                    </div>
-                  )}
+                    {canUpdateStatus && (
+                      <>
+                        {selectedTicket.status === 'IN_PROGRESS' && (
+                          <Button 
+                            variant="outline"
+                            onClick={() => handleUpdateStatus(selectedTicket.id, 'RESOLVED')}
+                          >
+                            Mark Resolved
+                          </Button>
+                        )}
+                        {selectedTicket.status === 'RESOLVED' && (
+                          <Button 
+                            onClick={() => handleUpdateStatus(selectedTicket.id, 'CLOSED')}
+                          >
+                            Close Ticket
+                          </Button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
           </DialogContent>
         </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={!!ticketToDelete} onOpenChange={() => setTicketToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Ticket?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete ticket {ticketToDelete?.ticket_number} for {ticketToDelete?.customer_name}. 
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDeleteTicket} className="bg-destructive text-destructive-foreground">
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </AppLayout>
   );

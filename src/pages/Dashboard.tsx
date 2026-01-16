@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Wrench, Package, CheckCircle, AlertTriangle, TrendingUp, IndianRupee } from 'lucide-react';
+import { Wrench, Package, CheckCircle, AlertTriangle, TrendingUp, IndianRupee, Download } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { StatsCard } from '@/components/dashboard/StatsCard';
 import { RecentTickets } from '@/components/dashboard/RecentTickets';
@@ -7,7 +7,8 @@ import { LowStockAlert } from '@/components/dashboard/LowStockAlert';
 import { supabase } from '@/integrations/supabase/client';
 import { ServiceTicket, WarehouseStock, Product } from '@/types/database';
 import { useAuth } from '@/contexts/AuthContext';
-
+import { Button } from '@/components/ui/button';
+import { downloadCSV, formatDashboardStatsForExport } from '@/utils/exportUtils';
 export default function Dashboard() {
   const { profile } = useAuth();
   const [stats, setStats] = useState({
@@ -115,16 +116,27 @@ export default function Dashboard() {
     );
   }
 
+  const handleExportDashboard = () => {
+    const data = formatDashboardStatsForExport(stats, new Date());
+    downloadCSV(data, `dashboard-report-${new Date().toISOString().split('T')[0]}`);
+  };
+
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">
-            Welcome back, {profile?.name || 'User'}
-          </h1>
-          <p className="text-muted-foreground">
-            Here's what's happening with your business today.
-          </p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">
+              Welcome back, {profile?.name || 'User'}
+            </h1>
+            <p className="text-muted-foreground">
+              Here's what's happening with your business today.
+            </p>
+          </div>
+          <Button variant="outline" onClick={handleExportDashboard}>
+            <Download className="h-4 w-4 mr-2" />
+            Export Report
+          </Button>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">

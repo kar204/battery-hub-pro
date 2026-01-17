@@ -12,6 +12,10 @@ export function PrintTicket({ ticket, profileName }: PrintTicketProps) {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
+    const hasResolutionDetails = ticket.resolution_notes || 
+      typeof ticket.service_price === 'number' || 
+      ticket.payment_method;
+
     printWindow.document.open();
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -74,6 +78,29 @@ export function PrintTicket({ ticket, profileName }: PrintTicketProps) {
               grid-template-columns: 1fr 1fr;
               gap: 15px;
             }
+            .resolution-section {
+              margin-top: 20px;
+              padding-top: 15px;
+              border-top: 1px dashed #ccc;
+            }
+            .resolution-section h2 {
+              font-size: 16px;
+              margin: 0 0 15px 0;
+              color: #333;
+            }
+            .price-highlight {
+              font-size: 18px;
+              font-weight: bold;
+              color: #2e7d32;
+            }
+            .payment-badge {
+              display: inline-block;
+              padding: 4px 12px;
+              background: #e3f2fd;
+              border-radius: 4px;
+              font-weight: bold;
+              color: #1565c0;
+            }
             .footer {
               margin-top: 30px;
               border-top: 1px solid #ddd;
@@ -123,8 +150,34 @@ export function PrintTicket({ ticket, profileName }: PrintTicketProps) {
             <div class="label">Issue Description</div>
             <div class="value">${ticket.issue_description}</div>
           </div>
+          ${hasResolutionDetails ? `
+          <div class="resolution-section">
+            <h2>Resolution Details</h2>
+            <div class="grid">
+              ${ticket.resolution_notes ? `
+              <div class="section" style="grid-column: span 2;">
+                <div class="label">Resolution Notes / Issue Brief</div>
+                <div class="value">${ticket.resolution_notes}</div>
+              </div>
+              ` : ''}
+              ${typeof ticket.service_price === 'number' ? `
+              <div class="section">
+                <div class="label">Service Price</div>
+                <div class="value price-highlight">₹${ticket.service_price.toFixed(2)}</div>
+              </div>
+              ` : ''}
+              ${ticket.payment_method ? `
+              <div class="section">
+                <div class="label">Payment Method</div>
+                <div class="value"><span class="payment-badge">${ticket.payment_method}</span></div>
+              </div>
+              ` : ''}
+            </div>
+          </div>
+          ` : ''}
           <div class="footer">
             Created: ${new Date(ticket.created_at).toLocaleString('en-IN')}
+            ${ticket.updated_at !== ticket.created_at ? ` | Updated: ${new Date(ticket.updated_at).toLocaleString('en-IN')}` : ''}
           </div>
         </body>
       </html>

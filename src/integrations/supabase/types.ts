@@ -120,6 +120,9 @@ export type Database = {
           id: string
           invertor_model: string | null
           issue_description: string
+          payment_method: string | null
+          resolution_notes: string | null
+          service_price: number | null
           status: Database["public"]["Enums"]["service_status"]
           ticket_number: string | null
           updated_at: string
@@ -134,6 +137,9 @@ export type Database = {
           id?: string
           invertor_model?: string | null
           issue_description: string
+          payment_method?: string | null
+          resolution_notes?: string | null
+          service_price?: number | null
           status?: Database["public"]["Enums"]["service_status"]
           ticket_number?: string | null
           updated_at?: string
@@ -148,6 +154,9 @@ export type Database = {
           id?: string
           invertor_model?: string | null
           issue_description?: string
+          payment_method?: string | null
+          resolution_notes?: string | null
+          service_price?: number | null
           status?: Database["public"]["Enums"]["service_status"]
           ticket_number?: string | null
           updated_at?: string

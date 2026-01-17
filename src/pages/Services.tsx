@@ -124,7 +124,7 @@ export default function Services() {
       // Find a service agent to auto-assign
       const serviceAgentId = serviceAgents.length > 0 ? serviceAgents[0] : null;
 
-      const { error } = await supabase.from('service_tickets').insert({
+      const { data, error } = await supabase.from('service_tickets').insert({
         customer_name: formData.customer_name,
         customer_phone: formData.customer_phone,
         battery_model: formData.battery_model,
@@ -133,7 +133,7 @@ export default function Services() {
         created_by: user.id,
         assigned_to: serviceAgentId,
         status: serviceAgentId ? 'IN_PROGRESS' : 'OPEN',
-      });
+      }).select().single();
 
       if (error) throw error;
 
@@ -146,6 +146,10 @@ export default function Services() {
         invertor_model: '',
         issue_description: '',
       });
+      
+      // Show print dialog for new ticket
+      setShowNewTicketPrint(data as ServiceTicket);
+      
       fetchTickets();
     } catch (error: any) {
       toast({ title: 'Error creating ticket', description: error.message, variant: 'destructive' });
@@ -252,10 +256,11 @@ export default function Services() {
   const isAdmin = hasRole('admin');
   const isServiceAgent = hasRole('service_agent');
   const isCounterStaff = hasRole('counter_staff');
-  const canMarkResolved = canUpdateStatus && (isServiceAgent || isAdmin);
+  const canMarkResolved = canUpdateStatus && (isServiceAgent || isAdmin || isCounterStaff);
   const canCloseTicket = canUpdateStatus && (isCounterStaff || isAdmin);
 
-  const [showResolvedPrint, setShowResolvedPrint] = useState<ServiceTicket | null>(null);
+  const [showNewTicketPrint, setShowNewTicketPrint] = useState<ServiceTicket | null>(null);
+  const [showClosedPrint, setShowClosedPrint] = useState<ServiceTicket | null>(null);
 
   const handleResolveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -290,9 +295,6 @@ export default function Services() {
 
       toast({ title: 'Ticket marked as resolved' });
       
-      // Show print dialog with updated ticket
-      setShowResolvedPrint(data as ServiceTicket);
-      
       setTicketToResolve(null);
       setResolveNotes('');
       setResolvePrice('');
@@ -324,7 +326,18 @@ export default function Services() {
         user_id: user.id,
       });
 
+      // Get updated ticket with payment info for print
+      const { data: updatedTicket } = await supabase
+        .from('service_tickets')
+        .select('*')
+        .eq('id', ticketToClose.id)
+        .single();
+
       toast({ title: 'Ticket closed' });
+      
+      // Show print dialog with closed ticket
+      setShowClosedPrint(updatedTicket as ServiceTicket);
+      
       setTicketToClose(null);
       setPaymentMethod('');
       setSelectedTicket(null);
@@ -568,10 +581,6 @@ export default function Services() {
 
                 <div className="flex flex-col gap-4 sm:flex-row sm:justify-between">
                   <div className="flex gap-2">
-                    <PrintTicket 
-                      ticket={selectedTicket} 
-                      profileName={getProfileName(selectedTicket.assigned_to)} 
-                    />
                     <Button 
                       variant="outline" 
                       size="sm" 
@@ -754,25 +763,51 @@ export default function Services() {
         </AlertDialogContent>
         </AlertDialog>
 
-        {/* Print After Resolve Dialog */}
-        <Dialog open={!!showResolvedPrint} onOpenChange={() => setShowResolvedPrint(null)}>
+        {/* Print After Close Dialog */}
+        <Dialog open={!!showClosedPrint} onOpenChange={() => setShowClosedPrint(null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Ticket Resolved Successfully</DialogTitle>
+              <DialogTitle>Ticket Closed Successfully</DialogTitle>
             </DialogHeader>
-            {showResolvedPrint && (
+            {showClosedPrint && (
               <div className="space-y-4">
                 <p className="text-muted-foreground">
-                  Ticket <strong>{showResolvedPrint.ticket_number}</strong> has been marked as resolved. 
-                  Would you like to print the updated ticket with resolution details?
+                  Ticket <strong>{showClosedPrint.ticket_number}</strong> has been closed with payment received. 
+                  Would you like to print the final ticket?
                 </p>
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setShowResolvedPrint(null)}>
+                  <Button variant="outline" onClick={() => setShowClosedPrint(null)}>
                     Close
                   </Button>
                   <PrintTicket 
-                    ticket={showResolvedPrint} 
-                    profileName={getProfileName(showResolvedPrint.assigned_to)} 
+                    ticket={showClosedPrint} 
+                    profileName={getProfileName(showClosedPrint.assigned_to)} 
+                  />
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Print After Create Dialog */}
+        <Dialog open={!!showNewTicketPrint} onOpenChange={() => setShowNewTicketPrint(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Ticket Created Successfully</DialogTitle>
+            </DialogHeader>
+            {showNewTicketPrint && (
+              <div className="space-y-4">
+                <p className="text-muted-foreground">
+                  Ticket <strong>{showNewTicketPrint.ticket_number}</strong> has been created. 
+                  Would you like to print the ticket?
+                </p>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setShowNewTicketPrint(null)}>
+                    Close
+                  </Button>
+                  <PrintTicket 
+                    ticket={showNewTicketPrint} 
+                    profileName={getProfileName(showNewTicketPrint.assigned_to)} 
                   />
                 </div>
               </div>

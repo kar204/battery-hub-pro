@@ -255,6 +255,8 @@ export default function Services() {
   const canMarkResolved = canUpdateStatus && (isServiceAgent || isAdmin);
   const canCloseTicket = canUpdateStatus && (isCounterStaff || isAdmin);
 
+  const [showResolvedPrint, setShowResolvedPrint] = useState<ServiceTicket | null>(null);
+
   const handleResolveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ticketToResolve || !user) return;
@@ -266,14 +268,16 @@ export default function Services() {
     }
 
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('service_tickets')
         .update({
           status: 'RESOLVED',
           resolution_notes: resolveNotes || null,
           service_price: priceNumber,
         })
-        .eq('id', ticketToResolve.id);
+        .eq('id', ticketToResolve.id)
+        .select()
+        .single();
 
       if (error) throw error;
 
@@ -285,6 +289,10 @@ export default function Services() {
       });
 
       toast({ title: 'Ticket marked as resolved' });
+      
+      // Show print dialog with updated ticket
+      setShowResolvedPrint(data as ServiceTicket);
+      
       setTicketToResolve(null);
       setResolveNotes('');
       setResolvePrice('');
@@ -743,8 +751,34 @@ export default function Services() {
                 Delete
               </AlertDialogAction>
             </AlertDialogFooter>
-          </AlertDialogContent>
+        </AlertDialogContent>
         </AlertDialog>
+
+        {/* Print After Resolve Dialog */}
+        <Dialog open={!!showResolvedPrint} onOpenChange={() => setShowResolvedPrint(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Ticket Resolved Successfully</DialogTitle>
+            </DialogHeader>
+            {showResolvedPrint && (
+              <div className="space-y-4">
+                <p className="text-muted-foreground">
+                  Ticket <strong>{showResolvedPrint.ticket_number}</strong> has been marked as resolved. 
+                  Would you like to print the updated ticket with resolution details?
+                </p>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setShowResolvedPrint(null)}>
+                    Close
+                  </Button>
+                  <PrintTicket 
+                    ticket={showResolvedPrint} 
+                    profileName={getProfileName(showResolvedPrint.assigned_to)} 
+                  />
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </AppLayout>
   );

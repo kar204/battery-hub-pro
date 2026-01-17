@@ -1,7 +1,6 @@
 import { ServiceTicket } from '@/types/database';
 import { Button } from '@/components/ui/button';
 import { Printer } from 'lucide-react';
-import { useRef } from 'react';
 
 interface PrintTicketProps {
   ticket: ServiceTicket;
@@ -9,15 +8,11 @@ interface PrintTicketProps {
 }
 
 export function PrintTicket({ ticket, profileName }: PrintTicketProps) {
-  const printRef = useRef<HTMLDivElement>(null);
-
   const handlePrint = () => {
-    const printContent = printRef.current;
-    if (!printContent) return;
-    
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
-    
+
+    printWindow.document.open();
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
@@ -31,12 +26,27 @@ export function PrintTicket({ ticket, profileName }: PrintTicketProps) {
               margin: 0 auto;
             }
             .header {
-              text-align: center;
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
               border-bottom: 2px solid #333;
               padding-bottom: 15px;
               margin-bottom: 20px;
             }
-            .header h1 {
+            .header-logo {
+              display: flex;
+              align-items: center;
+              justify-content: flex-start;
+            }
+            .header-logo img {
+              height: 80px;
+              width: 80px;
+              object-fit: contain;
+            }
+            .header-text {
+              text-align: right;
+            }
+            .header-text h1 {
               margin: 0;
               font-size: 24px;
             }
@@ -71,24 +81,17 @@ export function PrintTicket({ ticket, profileName }: PrintTicketProps) {
               font-size: 12px;
               color: #888;
             }
-            .signature-line {
-              margin-top: 50px;
-              display: flex;
-              justify-content: space-between;
-            }
-            .signature-box {
-              width: 200px;
-              border-top: 1px solid #333;
-              padding-top: 5px;
-              text-align: center;
-              font-size: 12px;
-            }
           </style>
         </head>
         <body>
           <div class="header">
-            <h1>SERVICE TICKET</h1>
-            <div class="ticket-number">${ticket.ticket_number}</div>
+            <div class="header-logo">
+              <img src="/afsal-logo.png" alt="Afsal Traders logo" />
+            </div>
+            <div class="header-text">
+              <h1>SERVICE TICKET</h1>
+              <div class="ticket-number">${ticket.ticket_number}</div>
+            </div>
           </div>
           <div class="grid">
             <div class="section">
@@ -120,17 +123,13 @@ export function PrintTicket({ ticket, profileName }: PrintTicketProps) {
             <div class="label">Issue Description</div>
             <div class="value">${ticket.issue_description}</div>
           </div>
-          <div class="signature-line">
-            <div class="signature-box">Customer Signature</div>
-            <div class="signature-box">Staff Signature</div>
-          </div>
           <div class="footer">
             Created: ${new Date(ticket.created_at).toLocaleString('en-IN')}
           </div>
         </body>
       </html>
     `);
-    
+
     printWindow.document.close();
     printWindow.focus();
     printWindow.print();

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Battery, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -60,12 +60,16 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-secondary/10 to-accent/30 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-primary">
-              <Battery className="h-10 w-10 text-primary-foreground" />
+            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-white shadow-sm overflow-hidden">
+              <img
+                src="/afsal-logo.png"
+                alt="Afsal Traders logo"
+                className="h-24 w-24 object-contain"
+              />
             </div>
           </div>
           <CardTitle className="text-2xl font-bold">BatteryPro</CardTitle>

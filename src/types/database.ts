@@ -32,6 +32,9 @@ export interface ServiceTicket {
   invertor_model: string | null;
   issue_description: string;
   status: ServiceStatus;
+  resolution_notes: string | null;
+  service_price: number | null;
+  payment_method: 'CASH' | 'CARD' | 'UPI' | null;
   assigned_to: string | null;
   created_by: string;
   created_at: string;

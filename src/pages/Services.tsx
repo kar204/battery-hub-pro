@@ -46,6 +46,11 @@ export default function Services() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
   const [ticketToDelete, setTicketToDelete] = useState<ServiceTicket | null>(null);
+  const [ticketToResolve, setTicketToResolve] = useState<ServiceTicket | null>(null);
+  const [resolveNotes, setResolveNotes] = useState('');
+  const [resolvePrice, setResolvePrice] = useState('');
+  const [ticketToClose, setTicketToClose] = useState<ServiceTicket | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'UPI' | ''>('');
   
   // Form state
   const [formData, setFormData] = useState({
@@ -244,6 +249,82 @@ export default function Services() {
   const canAssignTicket = hasAnyRole(['admin', 'counter_staff']);
   const canUpdateStatus = hasAnyRole(['admin', 'service_agent', 'counter_staff']);
   const canDeleteTicket = hasRole('admin');
+  const isAdmin = hasRole('admin');
+  const isServiceAgent = hasRole('service_agent');
+  const isCounterStaff = hasRole('counter_staff');
+  const canMarkResolved = canUpdateStatus && (isServiceAgent || isAdmin);
+  const canCloseTicket = canUpdateStatus && (isCounterStaff || isAdmin);
+
+  const handleResolveSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ticketToResolve || !user) return;
+
+    const priceNumber = Number(resolvePrice);
+    if (Number.isNaN(priceNumber) || priceNumber < 0) {
+      toast({ title: 'Enter a valid price', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('service_tickets')
+        .update({
+          status: 'RESOLVED',
+          resolution_notes: resolveNotes || null,
+          service_price: priceNumber,
+        })
+        .eq('id', ticketToResolve.id);
+
+      if (error) throw error;
+
+      await supabase.from('service_logs').insert({
+        ticket_id: ticketToResolve.id,
+        action: 'Ticket resolved',
+        notes: resolveNotes || null,
+        user_id: user.id,
+      });
+
+      toast({ title: 'Ticket marked as resolved' });
+      setTicketToResolve(null);
+      setResolveNotes('');
+      setResolvePrice('');
+      setSelectedTicket(null);
+      fetchTickets();
+    } catch (error: any) {
+      toast({ title: 'Error resolving ticket', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  const handleCloseSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ticketToClose || !user || !paymentMethod) return;
+
+    try {
+      const { error } = await supabase
+        .from('service_tickets')
+        .update({
+          status: 'CLOSED',
+          payment_method: paymentMethod,
+        })
+        .eq('id', ticketToClose.id);
+
+      if (error) throw error;
+
+      await supabase.from('service_logs').insert({
+        ticket_id: ticketToClose.id,
+        action: `Ticket closed (payment: ${paymentMethod})`,
+        user_id: user.id,
+      });
+
+      toast({ title: 'Ticket closed' });
+      setTicketToClose(null);
+      setPaymentMethod('');
+      setSelectedTicket(null);
+      fetchTickets();
+    } catch (error: any) {
+      toast({ title: 'Error closing ticket', description: error.message, variant: 'destructive' });
+    }
+  };
 
   return (
     <AppLayout>
@@ -462,6 +543,21 @@ export default function Services() {
                   <p className="mt-1">{selectedTicket.issue_description}</p>
                 </div>
 
+                {(selectedTicket.resolution_notes ||
+                  typeof selectedTicket.service_price === 'number') && (
+                  <div className="space-y-2">
+                    <Label className="text-muted-foreground">Resolution Details</Label>
+                    {selectedTicket.resolution_notes && (
+                      <p className="mt-1">{selectedTicket.resolution_notes}</p>
+                    )}
+                    {typeof selectedTicket.service_price === 'number' && (
+                      <p className="mt-1 font-medium">
+                        Service Price: ₹{selectedTicket.service_price.toFixed(2)}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex flex-col gap-4 sm:flex-row sm:justify-between">
                   <div className="flex gap-2">
                     <PrintTicket 
@@ -504,29 +600,130 @@ export default function Services() {
                       </Select>
                     )}
 
-                    {canUpdateStatus && (
+                    {canMarkResolved && selectedTicket.status === 'IN_PROGRESS' && (
+                      <Button 
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedTicket(null);
+                          setTicketToResolve(selectedTicket);
+                          setResolveNotes(selectedTicket.resolution_notes || '');
+                          setResolvePrice(
+                            selectedTicket.service_price !== null
+                              ? String(selectedTicket.service_price)
+                              : ''
+                          );
+                        }}
+                      >
+                        Mark Resolved
+                      </Button>
+                    )}
+
+                    {canCloseTicket && selectedTicket.status === 'RESOLVED' && (
+                      <Button 
+                        onClick={() => {
+                          setSelectedTicket(null);
+                          setTicketToClose(selectedTicket);
+                          setPaymentMethod(
+                            (selectedTicket.payment_method as 'CASH' | 'CARD' | 'UPI' | null) || ''
+                          );
+                        }}
+                      >
+                        Close Ticket
+                      </Button>
+                    )}
+
+                    {canUpdateStatus && !canMarkResolved && selectedTicket.status === 'IN_PROGRESS' && (
                       <>
-                        {selectedTicket.status === 'IN_PROGRESS' && (
-                          <Button 
-                            variant="outline"
-                            onClick={() => handleUpdateStatus(selectedTicket.id, 'RESOLVED')}
-                          >
-                            Mark Resolved
-                          </Button>
-                        )}
-                        {selectedTicket.status === 'RESOLVED' && (
-                          <Button 
-                            onClick={() => handleUpdateStatus(selectedTicket.id, 'CLOSED')}
-                          >
-                            Close Ticket
-                          </Button>
-                        )}
+                        <Button 
+                          variant="outline"
+                          onClick={() => handleUpdateStatus(selectedTicket.id, 'RESOLVED')}
+                        >
+                          Mark Resolved
+                        </Button>
                       </>
                     )}
                   </div>
                 </div>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Resolve Ticket Dialog */}
+        <Dialog open={!!ticketToResolve} onOpenChange={() => setTicketToResolve(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Mark Ticket as Resolved</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleResolveSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="resolution_notes">Issue Brief / Resolution</Label>
+                <Textarea
+                  id="resolution_notes"
+                  value={resolveNotes}
+                  onChange={(e) => setResolveNotes(e.target.value)}
+                  required
+                  rows={4}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="service_price">Service Price</Label>
+                <Input
+                  id="service_price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={resolvePrice}
+                  onChange={(e) => setResolvePrice(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setTicketToResolve(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit">
+                  Save & Mark Resolved
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Close Ticket Dialog */}
+        <Dialog open={!!ticketToClose} onOpenChange={() => setTicketToClose(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Close Ticket</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleCloseSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label>Payment Method</Label>
+                <Select
+                  value={paymentMethod}
+                  onValueChange={(value) =>
+                    setPaymentMethod(value as 'CASH' | 'CARD' | 'UPI')
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select payment method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CASH">Cash</SelectItem>
+                    <SelectItem value="CARD">Card</SelectItem>
+                    <SelectItem value="UPI">UPI</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setTicketToClose(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={!paymentMethod}>
+                  Confirm & Close
+                </Button>
+              </div>
+            </form>
           </DialogContent>
         </Dialog>
 

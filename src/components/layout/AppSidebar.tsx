@@ -4,8 +4,7 @@ import {
   Package, 
   ClipboardList, 
   Users,
-  LogOut,
-  Battery
+  LogOut
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -49,8 +48,12 @@ export function AppSidebar() {
     <Sidebar>
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-            <Battery className="h-6 w-6 text-primary-foreground" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm overflow-hidden">
+            <img
+              src="/afsal-logo.png"
+              alt="Afsal Traders logo"
+              className="h-12 w-12 object-contain"
+            />
           </div>
           <div className="flex flex-col">
             <span className="font-semibold text-sidebar-foreground">BatteryPro</span>

@@ -16,6 +16,9 @@ export function PrintTicket({ ticket, profileName }: PrintTicketProps) {
       typeof ticket.service_price === 'number' || 
       ticket.payment_method;
 
+    // Build absolute URL for the logo
+    const logoUrl = `${window.location.origin}/afsal-logo.png`;
+
     printWindow.document.open();
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -113,7 +116,7 @@ export function PrintTicket({ ticket, profileName }: PrintTicketProps) {
         <body>
           <div class="header">
             <div class="header-logo">
-              <img src="/afsal-logo.png" alt="Afsal Traders logo" />
+              <img src="${logoUrl}" alt="Afsal Traders logo" />
             </div>
             <div class="header-text">
               <h1>SERVICE TICKET</h1>

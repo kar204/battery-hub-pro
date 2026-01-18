@@ -17,8 +17,10 @@ import { format } from 'date-fns';
 
 const allRoles: { value: AppRole; label: string; description: string }[] = [
   { value: 'admin', label: 'Admin', description: 'Full system access' },
-  { value: 'counter_staff', label: 'Counter Staff', description: 'Create and manage service tickets' },
-  { value: 'service_agent', label: 'Service Agent', description: 'Work on assigned tickets' },
+  { value: 'counter_staff', label: 'Counter Staff (SD)', description: 'Create and manage service tickets' },
+  { value: 'sp_battery', label: 'SP Battery', description: 'Handle battery service requests' },
+  { value: 'sp_invertor', label: 'SP Invertor', description: 'Handle invertor service requests' },
+  { value: 'service_agent', label: 'Service Agent (Legacy)', description: 'Work on assigned tickets' },
   { value: 'warehouse_staff', label: 'Warehouse Staff', description: 'Manage inventory stock' },
   { value: 'procurement_staff', label: 'Procurement Staff', description: 'Add products and manage procurement' },
 ];
@@ -26,6 +28,8 @@ const allRoles: { value: AppRole; label: string; description: string }[] = [
 const roleColors: Record<AppRole, string> = {
   admin: 'bg-primary/20 text-primary border-primary/30',
   counter_staff: 'bg-secondary/20 text-secondary-foreground border-secondary/30',
+  sp_battery: 'bg-chart-2/20 text-chart-2 border-chart-2/30',
+  sp_invertor: 'bg-chart-3/20 text-chart-3 border-chart-3/30',
   service_agent: 'bg-chart-2/20 text-chart-2 border-chart-2/30',
   warehouse_staff: 'bg-chart-1/20 text-chart-1 border-chart-1/30',
   procurement_staff: 'bg-chart-4/20 text-chart-4 border-chart-4/30',

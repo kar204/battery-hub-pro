@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { supabase } from '@/integrations/supabase/client';
 import { ServiceTicket, ServiceStatus, Profile, UserRole } from '@/types/database';
 import { useAuth } from '@/contexts/AuthContext';
@@ -39,16 +40,27 @@ export default function Services() {
   const { toast } = useToast();
   const [tickets, setTickets] = useState<ServiceTicket[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [serviceAgents, setServiceAgents] = useState<string[]>([]);
+  const [spBatteryAgents, setSpBatteryAgents] = useState<string[]>([]);
+  const [spInvertorAgents, setSpInvertorAgents] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<ServiceTicket | null>(null);
   const [ticketToDelete, setTicketToDelete] = useState<ServiceTicket | null>(null);
-  const [ticketToResolve, setTicketToResolve] = useState<ServiceTicket | null>(null);
-  const [resolveNotes, setResolveNotes] = useState('');
-  const [resolvePrice, setResolvePrice] = useState('');
+  
+  // Battery resolution state
+  const [ticketToResolveBattery, setTicketToResolveBattery] = useState<ServiceTicket | null>(null);
+  const [batteryRechargeable, setBatteryRechargeable] = useState<'yes' | 'no' | ''>('');
+  const [batteryPrice, setBatteryPrice] = useState('');
+  
+  // Invertor resolution state
+  const [ticketToResolveInvertor, setTicketToResolveInvertor] = useState<ServiceTicket | null>(null);
+  const [invertorResolved, setInvertorResolved] = useState<'yes' | 'no' | ''>('');
+  const [invertorIssueDescription, setInvertorIssueDescription] = useState('');
+  const [invertorPrice, setInvertorPrice] = useState('');
+  
+  // Close ticket state
   const [ticketToClose, setTicketToClose] = useState<ServiceTicket | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CARD' | 'UPI' | ''>('');
   
@@ -60,6 +72,9 @@ export default function Services() {
     invertor_model: '',
     issue_description: '',
   });
+
+  const [showNewTicketPrint, setShowNewTicketPrint] = useState<ServiceTicket | null>(null);
+  const [showClosedPrint, setShowClosedPrint] = useState<ServiceTicket | null>(null);
 
   useEffect(() => {
     fetchTickets();
@@ -106,13 +121,20 @@ export default function Services() {
   };
 
   const fetchServiceAgents = async () => {
-    // Get user_ids of service_agents
-    const { data } = await supabase
+    // Get SP Battery agents
+    const { data: batteryData } = await supabase
       .from('user_roles')
       .select('user_id')
-      .eq('role', 'service_agent');
+      .eq('role', 'sp_battery');
     
-    setServiceAgents((data || []).map((r: any) => r.user_id));
+    // Get SP Invertor agents
+    const { data: invertorData } = await supabase
+      .from('user_roles')
+      .select('user_id')
+      .eq('role', 'sp_invertor');
+    
+    setSpBatteryAgents((batteryData || []).map((r: any) => r.user_id));
+    setSpInvertorAgents((invertorData || []).map((r: any) => r.user_id));
   };
 
   const handleCreateTicket = async (e: React.FormEvent) => {
@@ -121,8 +143,12 @@ export default function Services() {
     if (!user) return;
 
     try {
-      // Find a service agent to auto-assign
-      const serviceAgentId = serviceAgents.length > 0 ? serviceAgents[0] : null;
+      const hasInvertor = !!formData.invertor_model;
+      
+      // Auto-assign to SP Battery (first available)
+      const batteryAgentId = spBatteryAgents.length > 0 ? spBatteryAgents[0] : null;
+      // Auto-assign to SP Invertor if invertor model is provided
+      const invertorAgentId = hasInvertor && spInvertorAgents.length > 0 ? spInvertorAgents[0] : null;
 
       const { data, error } = await supabase.from('service_tickets').insert({
         customer_name: formData.customer_name,
@@ -131,8 +157,12 @@ export default function Services() {
         invertor_model: formData.invertor_model || null,
         issue_description: formData.issue_description,
         created_by: user.id,
-        assigned_to: serviceAgentId,
-        status: serviceAgentId ? 'IN_PROGRESS' : 'OPEN',
+        assigned_to_battery: batteryAgentId,
+        assigned_to_invertor: invertorAgentId,
+        assigned_to: batteryAgentId, // Keep for backward compatibility
+        status: batteryAgentId ? 'IN_PROGRESS' : 'OPEN',
+        battery_resolved: false,
+        invertor_resolved: hasInvertor ? false : null,
       }).select().single();
 
       if (error) throw error;
@@ -156,49 +186,53 @@ export default function Services() {
     }
   };
 
-  const handleUpdateStatus = async (ticketId: string, newStatus: ServiceStatus) => {
+  const handleAssignBattery = async (ticketId: string, assigneeId: string) => {
     try {
       const { error } = await supabase
         .from('service_tickets')
-        .update({ status: newStatus })
+        .update({ 
+          assigned_to_battery: assigneeId, 
+          assigned_to: assigneeId,
+          status: 'IN_PROGRESS' 
+        })
         .eq('id', ticketId);
 
       if (error) throw error;
 
       await supabase.from('service_logs').insert({
         ticket_id: ticketId,
-        action: `Status changed to ${newStatus}`,
+        action: 'Battery assigned to SP',
         user_id: user?.id,
       });
 
-      toast({ title: `Ticket ${newStatus.toLowerCase().replace('_', ' ')}` });
+      toast({ title: 'SP Battery assigned successfully' });
       setSelectedTicket(null);
       fetchTickets();
     } catch (error: any) {
-      toast({ title: 'Error updating ticket', description: error.message, variant: 'destructive' });
+      toast({ title: 'Error assigning', description: error.message, variant: 'destructive' });
     }
   };
 
-  const handleAssignTicket = async (ticketId: string, assigneeId: string) => {
+  const handleAssignInvertor = async (ticketId: string, assigneeId: string) => {
     try {
       const { error } = await supabase
         .from('service_tickets')
-        .update({ assigned_to: assigneeId, status: 'IN_PROGRESS' })
+        .update({ assigned_to_invertor: assigneeId })
         .eq('id', ticketId);
 
       if (error) throw error;
 
       await supabase.from('service_logs').insert({
         ticket_id: ticketId,
-        action: 'Ticket assigned',
+        action: 'Invertor assigned to SP',
         user_id: user?.id,
       });
 
-      toast({ title: 'Ticket assigned successfully' });
+      toast({ title: 'SP Invertor assigned successfully' });
       setSelectedTicket(null);
       fetchTickets();
     } catch (error: any) {
-      toast({ title: 'Error assigning ticket', description: error.message, variant: 'destructive' });
+      toast({ title: 'Error assigning', description: error.message, variant: 'destructive' });
     }
   };
 
@@ -222,86 +256,123 @@ export default function Services() {
     }
   };
 
-  const handleExportSingle = (ticket: ServiceTicket) => {
-    const data = [formatTicketForExport(ticket, getProfileName(ticket.assigned_to))];
-    downloadCSV(data, `ticket-${ticket.ticket_number || ticket.id}`);
-  };
-
-  const handleExportAll = () => {
-    const data = filteredTickets.map(ticket => 
-      formatTicketForExport(ticket, getProfileName(ticket.assigned_to))
-    );
-    downloadCSV(data, `service-tickets-${new Date().toISOString().split('T')[0]}`);
-  };
-
-  const filteredTickets = tickets.filter(ticket =>
-    ticket.customer_name.toLowerCase().includes(search.toLowerCase()) ||
-    ticket.battery_model.toLowerCase().includes(search.toLowerCase()) ||
-    (ticket.ticket_number && ticket.ticket_number.toLowerCase().includes(search.toLowerCase()))
-  );
-
-  const getProfileName = (userId: string | null) => {
-    if (!userId) return 'Unassigned';
-    const profile = profiles.find(p => p.user_id === userId);
-    return profile?.name || 'Unknown';
-  };
-
-  // Filter profiles to only show service agents for assignment
-  const serviceAgentProfiles = profiles.filter(p => serviceAgents.includes(p.user_id));
-
-  const canCreateTicket = hasAnyRole(['admin', 'counter_staff']);
-  const canAssignTicket = hasAnyRole(['admin', 'counter_staff']);
-  const canUpdateStatus = hasAnyRole(['admin', 'service_agent', 'counter_staff']);
-  const canDeleteTicket = hasRole('admin');
-  const isAdmin = hasRole('admin');
-  const isServiceAgent = hasRole('service_agent');
-  const isCounterStaff = hasRole('counter_staff');
-  const canMarkResolved = canUpdateStatus && (isServiceAgent || isAdmin || isCounterStaff);
-  const canCloseTicket = canUpdateStatus && (isCounterStaff || isAdmin);
-
-  const [showNewTicketPrint, setShowNewTicketPrint] = useState<ServiceTicket | null>(null);
-  const [showClosedPrint, setShowClosedPrint] = useState<ServiceTicket | null>(null);
-
-  const handleResolveSubmit = async (e: React.FormEvent) => {
+  // Handle Battery Resolution
+  const handleBatteryResolveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!ticketToResolve || !user) return;
+    if (!ticketToResolveBattery || !user || !batteryRechargeable) return;
 
-    const priceNumber = Number(resolvePrice);
+    const priceNumber = Number(batteryPrice);
     if (Number.isNaN(priceNumber) || priceNumber < 0) {
       toast({ title: 'Enter a valid price', variant: 'destructive' });
       return;
     }
 
     try {
-      const { data, error } = await supabase
+      const hasInvertor = !!ticketToResolveBattery.invertor_model;
+      const invertorAlreadyResolved = ticketToResolveBattery.invertor_resolved === true;
+      
+      // Determine if ticket should be marked as RESOLVED
+      const shouldResolve = !hasInvertor || invertorAlreadyResolved;
+
+      const updateData: any = {
+        battery_rechargeable: batteryRechargeable === 'yes',
+        battery_resolved: true,
+        battery_price: priceNumber,
+        battery_resolved_by: user.id,
+        battery_resolved_at: new Date().toISOString(),
+      };
+
+      if (shouldResolve) {
+        updateData.status = 'RESOLVED';
+        // Calculate total price
+        updateData.service_price = priceNumber + (ticketToResolveBattery.invertor_price || 0);
+        updateData.resolution_notes = `Battery: ${batteryRechargeable === 'yes' ? 'Rechargeable' : 'Not rechargeable'}`;
+      }
+
+      const { error } = await supabase
         .from('service_tickets')
-        .update({
-          status: 'RESOLVED',
-          resolution_notes: resolveNotes || null,
-          service_price: priceNumber,
-        })
-        .eq('id', ticketToResolve.id)
-        .select()
-        .single();
+        .update(updateData)
+        .eq('id', ticketToResolveBattery.id);
 
       if (error) throw error;
 
       await supabase.from('service_logs').insert({
-        ticket_id: ticketToResolve.id,
-        action: 'Ticket resolved',
-        notes: resolveNotes || null,
+        ticket_id: ticketToResolveBattery.id,
+        action: `Battery resolved - Rechargeable: ${batteryRechargeable}, Price: ₹${priceNumber}`,
         user_id: user.id,
       });
 
-      toast({ title: 'Ticket marked as resolved' });
+      toast({ title: 'Battery resolution saved' });
       
-      setTicketToResolve(null);
-      setResolveNotes('');
-      setResolvePrice('');
+      setTicketToResolveBattery(null);
+      setBatteryRechargeable('');
+      setBatteryPrice('');
       setSelectedTicket(null);
       fetchTickets();
     } catch (error: any) {
-      toast({ title: 'Error resolving ticket', description: error.message, variant: 'destructive' });
+      toast({ title: 'Error saving resolution', description: error.message, variant: 'destructive' });
+    }
+  };
+
+  // Handle Invertor Resolution
+  const handleInvertorResolveSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!ticketToResolveInvertor || !user || !invertorResolved) return;
+
+    const priceNumber = Number(invertorPrice);
+    if (Number.isNaN(priceNumber) || priceNumber < 0) {
+      toast({ title: 'Enter a valid price', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      const batteryAlreadyResolved = ticketToResolveInvertor.battery_resolved === true;
+      
+      // Determine if ticket should be marked as RESOLVED
+      const shouldResolve = batteryAlreadyResolved;
+
+      const updateData: any = {
+        invertor_resolved: true,
+        invertor_price: priceNumber,
+        invertor_issue_description: invertorIssueDescription || null,
+        invertor_resolved_by: user.id,
+        invertor_resolved_at: new Date().toISOString(),
+      };
+
+      if (shouldResolve) {
+        updateData.status = 'RESOLVED';
+        // Calculate total price
+        updateData.service_price = (ticketToResolveInvertor.battery_price || 0) + priceNumber;
+        const batteryNotes = ticketToResolveInvertor.battery_rechargeable !== null 
+          ? `Battery: ${ticketToResolveInvertor.battery_rechargeable ? 'Rechargeable' : 'Not rechargeable'}` 
+          : '';
+        updateData.resolution_notes = `${batteryNotes}${batteryNotes ? ' | ' : ''}Invertor: ${invertorResolved === 'yes' ? 'Resolved' : 'Not resolved'}${invertorIssueDescription ? ` - ${invertorIssueDescription}` : ''}`;
+      }
+
+      const { error } = await supabase
+        .from('service_tickets')
+        .update(updateData)
+        .eq('id', ticketToResolveInvertor.id);
+
+      if (error) throw error;
+
+      await supabase.from('service_logs').insert({
+        ticket_id: ticketToResolveInvertor.id,
+        action: `Invertor resolved - Resolved: ${invertorResolved}, Price: ₹${priceNumber}`,
+        notes: invertorIssueDescription || null,
+        user_id: user.id,
+      });
+
+      toast({ title: 'Invertor resolution saved' });
+      
+      setTicketToResolveInvertor(null);
+      setInvertorResolved('');
+      setInvertorIssueDescription('');
+      setInvertorPrice('');
+      setSelectedTicket(null);
+      fetchTickets();
+    } catch (error: any) {
+      toast({ title: 'Error saving resolution', description: error.message, variant: 'destructive' });
     }
   };
 
@@ -345,6 +416,63 @@ export default function Services() {
     } catch (error: any) {
       toast({ title: 'Error closing ticket', description: error.message, variant: 'destructive' });
     }
+  };
+
+  const handleExportSingle = (ticket: ServiceTicket) => {
+    const data = [formatTicketForExport(ticket, getProfileName(ticket.assigned_to))];
+    downloadCSV(data, `ticket-${ticket.ticket_number || ticket.id}`);
+  };
+
+  const handleExportAll = () => {
+    const data = filteredTickets.map(ticket => 
+      formatTicketForExport(ticket, getProfileName(ticket.assigned_to))
+    );
+    downloadCSV(data, `service-tickets-${new Date().toISOString().split('T')[0]}`);
+  };
+
+  const filteredTickets = tickets.filter(ticket =>
+    ticket.customer_name.toLowerCase().includes(search.toLowerCase()) ||
+    ticket.battery_model.toLowerCase().includes(search.toLowerCase()) ||
+    (ticket.ticket_number && ticket.ticket_number.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const getProfileName = (userId: string | null) => {
+    if (!userId) return 'Unassigned';
+    const profile = profiles.find(p => p.user_id === userId);
+    return profile?.name || 'Unknown';
+  };
+
+  // Filter profiles for assignment
+  const spBatteryProfiles = profiles.filter(p => spBatteryAgents.includes(p.user_id));
+  const spInvertorProfiles = profiles.filter(p => spInvertorAgents.includes(p.user_id));
+
+  const canCreateTicket = hasAnyRole(['admin', 'counter_staff']);
+  const canAssignTicket = hasAnyRole(['admin', 'counter_staff']);
+  const canDeleteTicket = hasRole('admin');
+  const isAdmin = hasRole('admin');
+  const isSpBattery = hasRole('sp_battery');
+  const isSpInvertor = hasRole('sp_invertor');
+  const isCounterStaff = hasRole('counter_staff');
+  const canCloseTicket = isCounterStaff || isAdmin;
+
+  // Check if current user can resolve battery part
+  const canResolveBattery = (ticket: ServiceTicket) => {
+    if (isAdmin || isCounterStaff) return true;
+    if (isSpBattery && ticket.assigned_to_battery === user?.id) return true;
+    return false;
+  };
+
+  // Check if current user can resolve invertor part
+  const canResolveInvertor = (ticket: ServiceTicket) => {
+    if (!ticket.invertor_model) return false;
+    if (isAdmin || isCounterStaff) return true;
+    if (isSpInvertor && ticket.assigned_to_invertor === user?.id) return true;
+    return false;
+  };
+
+  // Calculate total price for display
+  const getTotalPrice = (ticket: ServiceTicket) => {
+    return (ticket.battery_price || 0) + (ticket.invertor_price || 0);
   };
 
   return (
@@ -404,12 +532,12 @@ export default function Services() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="invertor_model">Invertor Model</Label>
+                        <Label htmlFor="invertor_model">Invertor Model (Optional)</Label>
                         <Input
                           id="invertor_model"
                           value={formData.invertor_model}
                           onChange={(e) => setFormData({ ...formData, invertor_model: e.target.value })}
-                          placeholder="Optional"
+                          placeholder="Leave empty for battery-only"
                         />
                       </div>
                     </div>
@@ -424,7 +552,9 @@ export default function Services() {
                       />
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      Ticket will be auto-assigned to a Service Agent
+                      {formData.invertor_model 
+                        ? 'Ticket will be assigned to SP Battery and SP Invertor'
+                        : 'Ticket will be assigned to SP Battery only'}
                     </p>
                     <Button type="submit" className="w-full">Create Ticket</Button>
                   </form>
@@ -480,7 +610,7 @@ export default function Services() {
                 <CardContent className="p-6">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="space-y-2 flex-1">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-wrap">
                         {ticket.ticket_number && (
                           <Badge variant="outline" className="font-mono text-xs">
                             {ticket.ticket_number}
@@ -499,14 +629,37 @@ export default function Services() {
                       <p className="text-sm text-muted-foreground line-clamp-2">
                         {ticket.issue_description}
                       </p>
+                      {/* Show resolution status */}
+                      <div className="flex gap-2 flex-wrap">
+                        {ticket.battery_resolved !== null && (
+                          <Badge variant={ticket.battery_resolved ? "default" : "secondary"}>
+                            Battery: {ticket.battery_resolved ? '✓ Resolved' : 'Pending'}
+                          </Badge>
+                        )}
+                        {ticket.invertor_model && ticket.invertor_resolved !== null && (
+                          <Badge variant={ticket.invertor_resolved ? "default" : "secondary"}>
+                            Invertor: {ticket.invertor_resolved ? '✓ Resolved' : 'Pending'}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                     <div className="flex flex-col items-start sm:items-end gap-2 text-sm">
                       <span className="text-muted-foreground">
                         {formatDistanceToNow(new Date(ticket.created_at), { addSuffix: true })}
                       </span>
                       <span className="text-muted-foreground">
-                        Assigned to: {getProfileName(ticket.assigned_to)}
+                        Battery: {getProfileName(ticket.assigned_to_battery)}
                       </span>
+                      {ticket.invertor_model && (
+                        <span className="text-muted-foreground">
+                          Invertor: {getProfileName(ticket.assigned_to_invertor)}
+                        </span>
+                      )}
+                      {ticket.status === 'RESOLVED' && (
+                        <span className="font-semibold text-chart-4">
+                          Total: ₹{getTotalPrice(ticket).toFixed(2)}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -517,7 +670,7 @@ export default function Services() {
 
         {/* Ticket Detail Dialog */}
         <Dialog open={!!selectedTicket} onOpenChange={() => setSelectedTicket(null)}>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-3">
                 Ticket Details
@@ -554,9 +707,15 @@ export default function Services() {
                     </Badge>
                   </div>
                   <div>
-                    <Label className="text-muted-foreground">Assigned To</Label>
-                    <p className="font-medium">{getProfileName(selectedTicket.assigned_to)}</p>
+                    <Label className="text-muted-foreground">SP Battery</Label>
+                    <p className="font-medium">{getProfileName(selectedTicket.assigned_to_battery)}</p>
                   </div>
+                  {selectedTicket.invertor_model && (
+                    <div>
+                      <Label className="text-muted-foreground">SP Invertor</Label>
+                      <p className="font-medium">{getProfileName(selectedTicket.assigned_to_invertor)}</p>
+                    </div>
+                  )}
                 </div>
                 
                 <div>
@@ -564,18 +723,32 @@ export default function Services() {
                   <p className="mt-1">{selectedTicket.issue_description}</p>
                 </div>
 
-                {(selectedTicket.resolution_notes ||
-                  typeof selectedTicket.service_price === 'number') && (
-                  <div className="space-y-2">
-                    <Label className="text-muted-foreground">Resolution Details</Label>
-                    {selectedTicket.resolution_notes && (
-                      <p className="mt-1">{selectedTicket.resolution_notes}</p>
+                {/* Battery Resolution Details */}
+                {selectedTicket.battery_resolved && (
+                  <div className="p-4 rounded-lg bg-muted/50 space-y-2">
+                    <h4 className="font-semibold">Battery Resolution</h4>
+                    <p>Rechargeable: {selectedTicket.battery_rechargeable ? 'Yes' : 'No'}</p>
+                    <p>Price: ₹{(selectedTicket.battery_price || 0).toFixed(2)}</p>
+                  </div>
+                )}
+
+                {/* Invertor Resolution Details */}
+                {selectedTicket.invertor_model && selectedTicket.invertor_resolved && (
+                  <div className="p-4 rounded-lg bg-muted/50 space-y-2">
+                    <h4 className="font-semibold">Invertor Resolution</h4>
+                    {selectedTicket.invertor_issue_description && (
+                      <p>Issue: {selectedTicket.invertor_issue_description}</p>
                     )}
-                    {typeof selectedTicket.service_price === 'number' && (
-                      <p className="mt-1 font-medium">
-                        Service Price: ₹{selectedTicket.service_price.toFixed(2)}
-                      </p>
-                    )}
+                    <p>Price: ₹{(selectedTicket.invertor_price || 0).toFixed(2)}</p>
+                  </div>
+                )}
+
+                {/* Total Price */}
+                {(selectedTicket.battery_resolved || selectedTicket.invertor_resolved) && (
+                  <div className="p-4 rounded-lg bg-primary/10 border border-primary/20">
+                    <p className="font-semibold text-lg">
+                      Total Service Price: ₹{getTotalPrice(selectedTicket).toFixed(2)}
+                    </p>
                   </div>
                 )}
 
@@ -602,13 +775,14 @@ export default function Services() {
                   </div>
                   
                   <div className="flex gap-2 flex-wrap">
-                    {canAssignTicket && selectedTicket.status === 'OPEN' && (
-                      <Select onValueChange={(value) => handleAssignTicket(selectedTicket.id, value)}>
+                    {/* Assign SP Battery */}
+                    {canAssignTicket && !selectedTicket.assigned_to_battery && selectedTicket.status === 'OPEN' && (
+                      <Select onValueChange={(value) => handleAssignBattery(selectedTicket.id, value)}>
                         <SelectTrigger className="w-[180px]">
-                          <SelectValue placeholder="Assign to agent..." />
+                          <SelectValue placeholder="Assign SP Battery..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {serviceAgentProfiles.map((profile) => (
+                          {spBatteryProfiles.map((profile) => (
                             <SelectItem key={profile.id} value={profile.user_id}>
                               {profile.name}
                             </SelectItem>
@@ -617,47 +791,68 @@ export default function Services() {
                       </Select>
                     )}
 
-                    {canMarkResolved && selectedTicket.status === 'IN_PROGRESS' && (
+                    {/* Assign SP Invertor */}
+                    {canAssignTicket && selectedTicket.invertor_model && !selectedTicket.assigned_to_invertor && (
+                      <Select onValueChange={(value) => handleAssignInvertor(selectedTicket.id, value)}>
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder="Assign SP Invertor..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {spInvertorProfiles.map((profile) => (
+                            <SelectItem key={profile.id} value={profile.user_id}>
+                              {profile.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+
+                    {/* Resolve Battery */}
+                    {canResolveBattery(selectedTicket) && 
+                     selectedTicket.status === 'IN_PROGRESS' && 
+                     !selectedTicket.battery_resolved && (
                       <Button 
                         variant="outline"
                         onClick={() => {
                           setSelectedTicket(null);
-                          setTicketToResolve(selectedTicket);
-                          setResolveNotes(selectedTicket.resolution_notes || '');
-                          setResolvePrice(
-                            selectedTicket.service_price !== null
-                              ? String(selectedTicket.service_price)
-                              : ''
-                          );
+                          setTicketToResolveBattery(selectedTicket);
+                          setBatteryRechargeable('');
+                          setBatteryPrice('');
                         }}
                       >
-                        Mark Resolved
+                        Resolve Battery
                       </Button>
                     )}
 
+                    {/* Resolve Invertor */}
+                    {canResolveInvertor(selectedTicket) && 
+                     selectedTicket.status === 'IN_PROGRESS' && 
+                     !selectedTicket.invertor_resolved && (
+                      <Button 
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedTicket(null);
+                          setTicketToResolveInvertor(selectedTicket);
+                          setInvertorResolved('');
+                          setInvertorIssueDescription('');
+                          setInvertorPrice('');
+                        }}
+                      >
+                        Resolve Invertor
+                      </Button>
+                    )}
+
+                    {/* Close Ticket */}
                     {canCloseTicket && selectedTicket.status === 'RESOLVED' && (
                       <Button 
                         onClick={() => {
                           setSelectedTicket(null);
                           setTicketToClose(selectedTicket);
-                          setPaymentMethod(
-                            (selectedTicket.payment_method as 'CASH' | 'CARD' | 'UPI' | null) || ''
-                          );
+                          setPaymentMethod('');
                         }}
                       >
                         Close Ticket
                       </Button>
-                    )}
-
-                    {canUpdateStatus && !canMarkResolved && selectedTicket.status === 'IN_PROGRESS' && (
-                      <>
-                        <Button 
-                          variant="outline"
-                          onClick={() => handleUpdateStatus(selectedTicket.id, 'RESOLVED')}
-                        >
-                          Mark Resolved
-                        </Button>
-                      </>
                     )}
                   </div>
                 </div>
@@ -666,41 +861,112 @@ export default function Services() {
           </DialogContent>
         </Dialog>
 
-        {/* Resolve Ticket Dialog */}
-        <Dialog open={!!ticketToResolve} onOpenChange={() => setTicketToResolve(null)}>
+        {/* Battery Resolution Dialog */}
+        <Dialog open={!!ticketToResolveBattery} onOpenChange={() => setTicketToResolveBattery(null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Mark Ticket as Resolved</DialogTitle>
+              <DialogTitle>Battery Resolution</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleResolveSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="resolution_notes">Issue Brief / Resolution</Label>
-                <Textarea
-                  id="resolution_notes"
-                  value={resolveNotes}
-                  onChange={(e) => setResolveNotes(e.target.value)}
-                  required
-                  rows={4}
-                />
+            <form onSubmit={handleBatteryResolveSubmit} className="space-y-4">
+              <div className="space-y-3">
+                <Label>Battery Rechargeable?</Label>
+                <RadioGroup 
+                  value={batteryRechargeable} 
+                  onValueChange={(val) => setBatteryRechargeable(val as 'yes' | 'no')}
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="yes" id="rechargeable-yes" />
+                    <Label htmlFor="rechargeable-yes">Yes</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="no" id="rechargeable-no" />
+                    <Label htmlFor="rechargeable-no">No</Label>
+                  </div>
+                </RadioGroup>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="service_price">Service Price</Label>
+                <Label htmlFor="battery_price">Price (₹)</Label>
                 <Input
-                  id="service_price"
+                  id="battery_price"
                   type="number"
                   min="0"
                   step="0.01"
-                  value={resolvePrice}
-                  onChange={(e) => setResolvePrice(e.target.value)}
+                  value={batteryPrice}
+                  onChange={(e) => setBatteryPrice(e.target.value)}
+                  placeholder={batteryRechargeable === 'no' ? 'Can be 0' : 'Enter price'}
                   required
                 />
+                {batteryRechargeable === 'no' && (
+                  <p className="text-sm text-muted-foreground">Price can be 0 if battery is not rechargeable</p>
+                )}
               </div>
               <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setTicketToResolve(null)}>
+                <Button type="button" variant="outline" onClick={() => setTicketToResolveBattery(null)}>
                   Cancel
                 </Button>
-                <Button type="submit">
-                  Save & Mark Resolved
+                <Button type="submit" disabled={!batteryRechargeable}>
+                  Save Battery Resolution
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Invertor Resolution Dialog */}
+        <Dialog open={!!ticketToResolveInvertor} onOpenChange={() => setTicketToResolveInvertor(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Invertor Resolution</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleInvertorResolveSubmit} className="space-y-4">
+              <div className="space-y-3">
+                <Label>Resolved?</Label>
+                <RadioGroup 
+                  value={invertorResolved} 
+                  onValueChange={(val) => setInvertorResolved(val as 'yes' | 'no')}
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="yes" id="invertor-yes" />
+                    <Label htmlFor="invertor-yes">Yes</Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="no" id="invertor-no" />
+                    <Label htmlFor="invertor-no">No</Label>
+                  </div>
+                </RadioGroup>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="invertor_issue">Issue / Reason Description (Optional)</Label>
+                <Textarea
+                  id="invertor_issue"
+                  value={invertorIssueDescription}
+                  onChange={(e) => setInvertorIssueDescription(e.target.value)}
+                  rows={3}
+                  placeholder="Describe the issue or reason..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="invertor_price">Price (₹)</Label>
+                <Input
+                  id="invertor_price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={invertorPrice}
+                  onChange={(e) => setInvertorPrice(e.target.value)}
+                  placeholder={invertorResolved === 'no' ? 'Can be 0' : 'Enter price'}
+                  required
+                />
+                {invertorResolved === 'no' && (
+                  <p className="text-sm text-muted-foreground">Price can be 0 if issue could not be resolved</p>
+                )}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setTicketToResolveInvertor(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={!invertorResolved}>
+                  Save Invertor Resolution
                 </Button>
               </div>
             </form>
@@ -713,34 +979,45 @@ export default function Services() {
             <DialogHeader>
               <DialogTitle>Close Ticket</DialogTitle>
             </DialogHeader>
-            <form onSubmit={handleCloseSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Payment Method</Label>
-                <Select
-                  value={paymentMethod}
-                  onValueChange={(value) =>
-                    setPaymentMethod(value as 'CASH' | 'CARD' | 'UPI')
-                  }
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select payment method" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="CASH">Cash</SelectItem>
-                    <SelectItem value="CARD">Card</SelectItem>
-                    <SelectItem value="UPI">UPI</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setTicketToClose(null)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={!paymentMethod}>
-                  Confirm & Close
-                </Button>
-              </div>
-            </form>
+            {ticketToClose && (
+              <form onSubmit={handleCloseSubmit} className="space-y-4">
+                <div className="p-4 rounded-lg bg-muted/50">
+                  <p className="text-lg font-semibold">Total Amount: ₹{getTotalPrice(ticketToClose).toFixed(2)}</p>
+                  {ticketToClose.battery_price !== null && (
+                    <p className="text-sm text-muted-foreground">Battery: ₹{ticketToClose.battery_price.toFixed(2)}</p>
+                  )}
+                  {ticketToClose.invertor_price !== null && (
+                    <p className="text-sm text-muted-foreground">Invertor: ₹{ticketToClose.invertor_price.toFixed(2)}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Payment Method</Label>
+                  <Select
+                    value={paymentMethod}
+                    onValueChange={(value) =>
+                      setPaymentMethod(value as 'CASH' | 'CARD' | 'UPI')
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select payment method" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CASH">Cash</SelectItem>
+                      <SelectItem value="CARD">Card</SelectItem>
+                      <SelectItem value="UPI">UPI</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={() => setTicketToClose(null)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={!paymentMethod}>
+                    Confirm & Close
+                  </Button>
+                </div>
+              </form>
+            )}
           </DialogContent>
         </Dialog>
 
@@ -781,7 +1058,8 @@ export default function Services() {
                   </Button>
                   <PrintTicket 
                     ticket={showClosedPrint} 
-                    profileName={getProfileName(showClosedPrint.assigned_to)} 
+                    profileName={getProfileName(showClosedPrint.assigned_to_battery)} 
+                    invertorProfileName={getProfileName(showClosedPrint.assigned_to_invertor)}
                   />
                 </div>
               </div>
@@ -807,7 +1085,8 @@ export default function Services() {
                   </Button>
                   <PrintTicket 
                     ticket={showNewTicketPrint} 
-                    profileName={getProfileName(showNewTicketPrint.assigned_to)} 
+                    profileName={getProfileName(showNewTicketPrint.assigned_to_battery)} 
+                    invertorProfileName={getProfileName(showNewTicketPrint.assigned_to_invertor)}
                   />
                 </div>
               </div>

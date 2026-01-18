@@ -1,4 +1,4 @@
-export type AppRole = 'admin' | 'counter_staff' | 'service_agent' | 'warehouse_staff' | 'procurement_staff';
+export type AppRole = 'admin' | 'counter_staff' | 'service_agent' | 'warehouse_staff' | 'procurement_staff' | 'sp_battery' | 'sp_invertor';
 
 export type ServiceStatus = 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
 
@@ -39,6 +39,19 @@ export interface ServiceTicket {
   created_by: string;
   created_at: string;
   updated_at: string;
+  // New dual-assignment fields
+  assigned_to_battery: string | null;
+  assigned_to_invertor: string | null;
+  battery_rechargeable: boolean | null;
+  battery_resolved: boolean | null;
+  battery_price: number | null;
+  battery_resolved_by: string | null;
+  battery_resolved_at: string | null;
+  invertor_resolved: boolean | null;
+  invertor_price: number | null;
+  invertor_resolved_by: string | null;
+  invertor_resolved_at: string | null;
+  invertor_issue_description: string | null;
 }
 
 export interface ServiceLog {

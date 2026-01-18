@@ -112,13 +112,25 @@ export type Database = {
       service_tickets: {
         Row: {
           assigned_to: string | null
+          assigned_to_battery: string | null
+          assigned_to_invertor: string | null
           battery_model: string
+          battery_price: number | null
+          battery_rechargeable: boolean | null
+          battery_resolved: boolean | null
+          battery_resolved_at: string | null
+          battery_resolved_by: string | null
           created_at: string
           created_by: string
           customer_name: string
           customer_phone: string
           id: string
+          invertor_issue_description: string | null
           invertor_model: string | null
+          invertor_price: number | null
+          invertor_resolved: boolean | null
+          invertor_resolved_at: string | null
+          invertor_resolved_by: string | null
           issue_description: string
           payment_method: string | null
           resolution_notes: string | null
@@ -129,13 +141,25 @@ export type Database = {
         }
         Insert: {
           assigned_to?: string | null
+          assigned_to_battery?: string | null
+          assigned_to_invertor?: string | null
           battery_model: string
+          battery_price?: number | null
+          battery_rechargeable?: boolean | null
+          battery_resolved?: boolean | null
+          battery_resolved_at?: string | null
+          battery_resolved_by?: string | null
           created_at?: string
           created_by: string
           customer_name: string
           customer_phone: string
           id?: string
+          invertor_issue_description?: string | null
           invertor_model?: string | null
+          invertor_price?: number | null
+          invertor_resolved?: boolean | null
+          invertor_resolved_at?: string | null
+          invertor_resolved_by?: string | null
           issue_description: string
           payment_method?: string | null
           resolution_notes?: string | null
@@ -146,13 +170,25 @@ export type Database = {
         }
         Update: {
           assigned_to?: string | null
+          assigned_to_battery?: string | null
+          assigned_to_invertor?: string | null
           battery_model?: string
+          battery_price?: number | null
+          battery_rechargeable?: boolean | null
+          battery_resolved?: boolean | null
+          battery_resolved_at?: string | null
+          battery_resolved_by?: string | null
           created_at?: string
           created_by?: string
           customer_name?: string
           customer_phone?: string
           id?: string
+          invertor_issue_description?: string | null
           invertor_model?: string | null
+          invertor_price?: number | null
+          invertor_resolved?: boolean | null
+          invertor_resolved_at?: string | null
+          invertor_resolved_by?: string | null
           issue_description?: string
           payment_method?: string | null
           resolution_notes?: string | null
@@ -259,6 +295,12 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calculate_total_service_price: {
+        Args: {
+          ticket_row: Database["public"]["Tables"]["service_tickets"]["Row"]
+        }
+        Returns: number
+      }
       get_user_roles: {
         Args: { _user_id: string }
         Returns: Database["public"]["Enums"]["app_role"][]
@@ -278,6 +320,8 @@ export type Database = {
         | "service_agent"
         | "warehouse_staff"
         | "procurement_staff"
+        | "sp_battery"
+        | "sp_invertor"
       service_status: "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED"
       stock_source: "SHOP" | "SUPPLIER" | "WAREHOUSE"
       transaction_type: "IN" | "OUT"
@@ -414,6 +458,8 @@ export const Constants = {
         "service_agent",
         "warehouse_staff",
         "procurement_staff",
+        "sp_battery",
+        "sp_invertor",
       ],
       service_status: ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"],
       stock_source: ["SHOP", "SUPPLIER", "WAREHOUSE"],

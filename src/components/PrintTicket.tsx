@@ -5,16 +5,17 @@ import { Printer } from 'lucide-react';
 interface PrintTicketProps {
   ticket: ServiceTicket;
   profileName: string;
+  invertorProfileName?: string;
 }
 
-export function PrintTicket({ ticket, profileName }: PrintTicketProps) {
+export function PrintTicket({ ticket, profileName, invertorProfileName }: PrintTicketProps) {
   const handlePrint = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    const hasResolutionDetails = ticket.resolution_notes || 
-      typeof ticket.service_price === 'number' || 
-      ticket.payment_method;
+    const hasBatteryResolution = ticket.battery_resolved;
+    const hasInvertorResolution = ticket.invertor_model && ticket.invertor_resolved;
+    const totalPrice = (ticket.battery_price || 0) + (ticket.invertor_price || 0);
 
     // Build absolute URL for the logo
     const logoUrl = `${window.location.origin}/afsal-logo.png`;
@@ -83,16 +84,37 @@ export function PrintTicket({ ticket, profileName }: PrintTicketProps) {
             }
             .resolution-section {
               margin-top: 20px;
-              padding-top: 15px;
-              border-top: 1px dashed #ccc;
+              padding: 15px;
+              border: 1px solid #ddd;
+              border-radius: 8px;
+              background: #f9f9f9;
             }
             .resolution-section h2 {
               font-size: 16px;
               margin: 0 0 15px 0;
               color: #333;
+              border-bottom: 1px solid #ddd;
+              padding-bottom: 8px;
             }
             .price-highlight {
               font-size: 18px;
+              font-weight: bold;
+              color: #2e7d32;
+            }
+            .total-section {
+              margin-top: 20px;
+              padding: 15px;
+              background: #e8f5e9;
+              border-radius: 8px;
+              text-align: center;
+            }
+            .total-section .total-label {
+              font-size: 14px;
+              color: #555;
+              margin-bottom: 5px;
+            }
+            .total-section .total-value {
+              font-size: 24px;
               font-weight: bold;
               color: #2e7d32;
             }
@@ -111,6 +133,15 @@ export function PrintTicket({ ticket, profileName }: PrintTicketProps) {
               font-size: 12px;
               color: #888;
             }
+            .status-badge {
+              display: inline-block;
+              padding: 4px 8px;
+              border-radius: 4px;
+              font-size: 12px;
+              font-weight: bold;
+            }
+            .status-resolved { background: #e8f5e9; color: #2e7d32; }
+            .status-pending { background: #fff3e0; color: #f57c00; }
           </style>
         </head>
         <body>
@@ -145,39 +176,71 @@ export function PrintTicket({ ticket, profileName }: PrintTicketProps) {
               <div class="value">${ticket.status.replace('_', ' ')}</div>
             </div>
             <div class="section">
-              <div class="label">Assigned To</div>
+              <div class="label">SP Battery</div>
               <div class="value">${profileName}</div>
             </div>
+            ${ticket.invertor_model ? `
+            <div class="section">
+              <div class="label">SP Invertor</div>
+              <div class="value">${invertorProfileName || 'Unassigned'}</div>
+            </div>
+            ` : ''}
           </div>
           <div class="section">
             <div class="label">Issue Description</div>
             <div class="value">${ticket.issue_description}</div>
           </div>
-          ${hasResolutionDetails ? `
+          
+          ${hasBatteryResolution ? `
           <div class="resolution-section">
-            <h2>Resolution Details</h2>
+            <h2>🔋 Battery Service</h2>
             <div class="grid">
-              ${ticket.resolution_notes ? `
-              <div class="section" style="grid-column: span 2;">
-                <div class="label">Resolution Notes / Issue Brief</div>
-                <div class="value">${ticket.resolution_notes}</div>
-              </div>
-              ` : ''}
-              ${typeof ticket.service_price === 'number' ? `
               <div class="section">
-                <div class="label">Service Price</div>
-                <div class="value price-highlight">₹${ticket.service_price.toFixed(2)}</div>
+                <div class="label">Rechargeable</div>
+                <div class="value">${ticket.battery_rechargeable ? 'Yes' : 'No'}</div>
               </div>
-              ` : ''}
-              ${ticket.payment_method ? `
               <div class="section">
-                <div class="label">Payment Method</div>
-                <div class="value"><span class="payment-badge">${ticket.payment_method}</span></div>
+                <div class="label">Price</div>
+                <div class="value price-highlight">₹${(ticket.battery_price || 0).toFixed(2)}</div>
               </div>
-              ` : ''}
             </div>
           </div>
           ` : ''}
+          
+          ${hasInvertorResolution ? `
+          <div class="resolution-section">
+            <h2>⚡ Invertor Service</h2>
+            <div class="grid">
+              ${ticket.invertor_issue_description ? `
+              <div class="section" style="grid-column: span 2;">
+                <div class="label">Issue Description</div>
+                <div class="value">${ticket.invertor_issue_description}</div>
+              </div>
+              ` : ''}
+              <div class="section">
+                <div class="label">Resolved</div>
+                <div class="value">${ticket.invertor_resolved ? 'Yes' : 'No'}</div>
+              </div>
+              <div class="section">
+                <div class="label">Price</div>
+                <div class="value price-highlight">₹${(ticket.invertor_price || 0).toFixed(2)}</div>
+              </div>
+            </div>
+          </div>
+          ` : ''}
+          
+          ${(hasBatteryResolution || hasInvertorResolution) ? `
+          <div class="total-section">
+            <div class="total-label">TOTAL SERVICE AMOUNT</div>
+            <div class="total-value">₹${totalPrice.toFixed(2)}</div>
+            ${ticket.payment_method ? `
+            <div style="margin-top: 10px;">
+              <span class="payment-badge">Payment: ${ticket.payment_method}</span>
+            </div>
+            ` : ''}
+          </div>
+          ` : ''}
+          
           <div class="footer">
             Created: ${new Date(ticket.created_at).toLocaleString('en-IN')}
             ${ticket.updated_at !== ticket.created_at ? ` | Updated: ${new Date(ticket.updated_at).toLocaleString('en-IN')}` : ''}

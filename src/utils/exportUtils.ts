@@ -32,6 +32,7 @@ export function downloadCSV(data: Record<string, any>[], filename: string) {
 }
 
 export function formatTicketForExport(ticket: any, profileName: string) {
+  const totalPrice = (ticket.battery_price || 0) + (ticket.invertor_price || 0);
   return {
     'Ticket Number': ticket.ticket_number || '',
     'Customer Name': ticket.customer_name,
@@ -40,7 +41,12 @@ export function formatTicketForExport(ticket: any, profileName: string) {
     'Invertor Model': ticket.invertor_model || '',
     'Issue': ticket.issue_description,
     'Status': ticket.status,
-    'Assigned To': profileName,
+    'SP Battery': profileName,
+    'Battery Rechargeable': ticket.battery_rechargeable === true ? 'Yes' : ticket.battery_rechargeable === false ? 'No' : '',
+    'Battery Price': ticket.battery_price || 0,
+    'Invertor Price': ticket.invertor_price || 0,
+    'Total Price': totalPrice,
+    'Payment Method': ticket.payment_method || '',
     'Created At': new Date(ticket.created_at).toLocaleString('en-IN'),
   };
 }

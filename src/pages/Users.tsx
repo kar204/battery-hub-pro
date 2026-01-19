@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, Shield, UserCog } from 'lucide-react';
+import { Plus, Search, Shield, UserCog } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,7 +36,7 @@ const roleColors: Record<AppRole, string> = {
 };
 
 export default function Users() {
-  const { user } = useAuth();
+  const { user, hasRole } = useAuth();
   const { toast } = useToast();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [userRoles, setUserRoles] = useState<UserRole[]>([]);
@@ -44,6 +44,16 @@ export default function Users() {
   const [search, setSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
   const [selectedRoles, setSelectedRoles] = useState<AppRole[]>([]);
+  
+  // Add user form state
+  const [isAddUserOpen, setIsAddUserOpen] = useState(false);
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserRoles, setNewUserRoles] = useState<AppRole[]>([]);
+  const [addingUser, setAddingUser] = useState(false);
+  
+  const isAdmin = hasRole('admin');
 
   useEffect(() => {
     fetchData();
@@ -112,6 +122,72 @@ export default function Users() {
     );
   };
 
+  const toggleNewUserRole = (role: AppRole) => {
+    setNewUserRoles(prev => 
+      prev.includes(role) 
+        ? prev.filter(r => r !== role)
+        : [...prev, role]
+    );
+  };
+
+  const handleAddUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newUserEmail || !newUserPassword || !newUserName) return;
+
+    setAddingUser(true);
+    try {
+      // Sign up the new user
+      const { data, error } = await supabase.auth.signUp({
+        email: newUserEmail,
+        password: newUserPassword,
+        options: {
+          emailRedirectTo: window.location.origin,
+          data: { name: newUserName }
+        }
+      });
+
+      if (error) throw error;
+
+      if (!data.user) {
+        throw new Error('User creation failed');
+      }
+
+      // Wait a moment for the profile to be created by the trigger
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Assign roles if any selected
+      if (newUserRoles.length > 0) {
+        const { error: rolesError } = await supabase
+          .from('user_roles')
+          .insert(newUserRoles.map(role => ({
+            user_id: data.user!.id,
+            role,
+          })));
+
+        if (rolesError) {
+          console.error('Error assigning roles:', rolesError);
+          // Don't throw, user was created successfully
+        }
+      }
+
+      toast({ title: 'User created successfully', description: `${newUserName} has been added.` });
+      setIsAddUserOpen(false);
+      setNewUserEmail('');
+      setNewUserName('');
+      setNewUserPassword('');
+      setNewUserRoles([]);
+      fetchData();
+    } catch (error: any) {
+      toast({ 
+        title: 'Error creating user', 
+        description: error.message, 
+        variant: 'destructive' 
+      });
+    } finally {
+      setAddingUser(false);
+    }
+  };
+
   const filteredProfiles = profiles.filter(profile =>
     profile.name.toLowerCase().includes(search.toLowerCase()) ||
     profile.email.toLowerCase().includes(search.toLowerCase())
@@ -120,9 +196,84 @@ export default function Users() {
   return (
     <AppLayout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
-          <p className="text-muted-foreground">Manage user roles and permissions</p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
+            <p className="text-muted-foreground">Manage user roles and permissions</p>
+          </div>
+          {isAdmin && (
+            <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
+              <DialogTrigger asChild>
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add User
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Add New User</DialogTitle>
+                </DialogHeader>
+                <form onSubmit={handleAddUser} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="new-name">Full Name</Label>
+                    <Input
+                      id="new-name"
+                      value={newUserName}
+                      onChange={(e) => setNewUserName(e.target.value)}
+                      placeholder="Enter full name"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-email">Email</Label>
+                    <Input
+                      id="new-email"
+                      type="email"
+                      value={newUserEmail}
+                      onChange={(e) => setNewUserEmail(e.target.value)}
+                      placeholder="Enter email address"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-password">Password</Label>
+                    <Input
+                      id="new-password"
+                      type="password"
+                      value={newUserPassword}
+                      onChange={(e) => setNewUserPassword(e.target.value)}
+                      placeholder="Enter password (min 6 characters)"
+                      minLength={6}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Assign Roles (Optional)</Label>
+                    <div className="space-y-2 max-h-48 overflow-y-auto border rounded-lg p-2">
+                      {allRoles.map(role => (
+                        <div 
+                          key={role.value}
+                          className="flex items-center gap-2 p-2 rounded hover:bg-muted/50"
+                        >
+                          <Checkbox
+                            id={`new-${role.value}`}
+                            checked={newUserRoles.includes(role.value)}
+                            onCheckedChange={() => toggleNewUserRole(role.value)}
+                          />
+                          <Label htmlFor={`new-${role.value}`} className="flex-1 cursor-pointer text-sm">
+                            {role.label}
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <Button type="submit" className="w-full" disabled={addingUser}>
+                    {addingUser ? 'Creating...' : 'Create User'}
+                  </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
 
         <div className="relative">

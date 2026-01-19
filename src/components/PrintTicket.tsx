@@ -9,16 +9,27 @@ interface PrintTicketProps {
 }
 
 export function PrintTicket({ ticket, profileName, invertorProfileName }: PrintTicketProps) {
-  const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-
+  const handlePrint = async () => {
     const hasBatteryResolution = ticket.battery_resolved;
     const hasInvertorResolution = ticket.invertor_model && ticket.invertor_resolved;
     const totalPrice = (ticket.battery_price || 0) + (ticket.invertor_price || 0);
 
-    // Build absolute URL for the logo
-    const logoUrl = `${window.location.origin}/afsal-logo.png`;
+    // Load the logo and convert to base64 to ensure it prints properly
+    let logoDataUrl = '';
+    try {
+      const response = await fetch('/afsal-logo.png');
+      const blob = await response.blob();
+      logoDataUrl = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error('Failed to load logo:', error);
+    }
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
 
     printWindow.document.open();
     printWindow.document.write(`
@@ -147,7 +158,7 @@ export function PrintTicket({ ticket, profileName, invertorProfileName }: PrintT
         <body>
           <div class="header">
             <div class="header-logo">
-              <img src="${logoUrl}" alt="Afsal Traders logo" />
+              ${logoDataUrl ? `<img src="${logoDataUrl}" alt="Afsal Traders logo" />` : ''}
             </div>
             <div class="header-text">
               <h1>SERVICE TICKET</h1>

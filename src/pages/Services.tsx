@@ -91,6 +91,7 @@ export default function Services() {
     return () => {
       channel.unsubscribe();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
 
   const fetchTickets = async () => {
@@ -133,8 +134,8 @@ export default function Services() {
       .select('user_id')
       .eq('role', 'sp_invertor');
     
-    setSpBatteryAgents((batteryData || []).map((r: any) => r.user_id));
-    setSpInvertorAgents((invertorData || []).map((r: any) => r.user_id));
+    setSpBatteryAgents((batteryData || []).map((r: { user_id: string }) => r.user_id));
+    setSpInvertorAgents((invertorData || []).map((r: { user_id: string }) => r.user_id));
   };
 
   const handleCreateTicket = async (e: React.FormEvent) => {
@@ -181,8 +182,9 @@ export default function Services() {
       setShowNewTicketPrint(data as ServiceTicket);
       
       fetchTickets();
-    } catch (error: any) {
-      toast({ title: 'Error creating ticket', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      toast({ title: 'Error creating ticket', description: errorMessage, variant: 'destructive' });
     }
   };
 
@@ -208,8 +210,9 @@ export default function Services() {
       toast({ title: 'SP Battery assigned successfully' });
       setSelectedTicket(null);
       fetchTickets();
-    } catch (error: any) {
-      toast({ title: 'Error assigning', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      toast({ title: 'Error assigning', description: errorMessage, variant: 'destructive' });
     }
   };
 
@@ -231,8 +234,9 @@ export default function Services() {
       toast({ title: 'SP Invertor assigned successfully' });
       setSelectedTicket(null);
       fetchTickets();
-    } catch (error: any) {
-      toast({ title: 'Error assigning', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      toast({ title: 'Error assigning', description: errorMessage, variant: 'destructive' });
     }
   };
 
@@ -251,8 +255,9 @@ export default function Services() {
       setTicketToDelete(null);
       setSelectedTicket(null);
       fetchTickets();
-    } catch (error: any) {
-      toast({ title: 'Error deleting ticket', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      toast({ title: 'Error deleting ticket', description: errorMessage, variant: 'destructive' });
     }
   };
 
@@ -274,7 +279,7 @@ export default function Services() {
       // Determine if ticket should be marked as RESOLVED
       const shouldResolve = !hasInvertor || invertorAlreadyResolved;
 
-      const updateData: any = {
+      const updateData: Partial<ServiceTicket> = {
         battery_rechargeable: batteryRechargeable === 'yes',
         battery_resolved: true,
         battery_price: priceNumber,
@@ -309,8 +314,9 @@ export default function Services() {
       setBatteryPrice('');
       setSelectedTicket(null);
       fetchTickets();
-    } catch (error: any) {
-      toast({ title: 'Error saving resolution', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      toast({ title: 'Error saving resolution', description: errorMessage, variant: 'destructive' });
     }
   };
 
@@ -331,7 +337,7 @@ export default function Services() {
       // Determine if ticket should be marked as RESOLVED
       const shouldResolve = batteryAlreadyResolved;
 
-      const updateData: any = {
+      const updateData: Partial<ServiceTicket> = {
         invertor_resolved: true,
         invertor_price: priceNumber,
         invertor_issue_description: invertorIssueDescription || null,
@@ -371,8 +377,9 @@ export default function Services() {
       setInvertorPrice('');
       setSelectedTicket(null);
       fetchTickets();
-    } catch (error: any) {
-      toast({ title: 'Error saving resolution', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      toast({ title: 'Error saving resolution', description: errorMessage, variant: 'destructive' });
     }
   };
 
@@ -413,8 +420,9 @@ export default function Services() {
       setPaymentMethod('');
       setSelectedTicket(null);
       fetchTickets();
-    } catch (error: any) {
-      toast({ title: 'Error closing ticket', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      toast({ title: 'Error closing ticket', description: errorMessage, variant: 'destructive' });
     }
   };
 
@@ -753,7 +761,12 @@ export default function Services() {
                 )}
 
                 <div className="flex flex-col gap-4 sm:flex-row sm:justify-between">
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
+                    <PrintTicket 
+                      ticket={selectedTicket} 
+                      profileName={getProfileName(selectedTicket.assigned_to_battery)} 
+                      invertorProfileName={getProfileName(selectedTicket.assigned_to_invertor)}
+                    />
                     <Button 
                       variant="outline" 
                       size="sm" 
@@ -814,10 +827,14 @@ export default function Services() {
                       <Button 
                         variant="outline"
                         onClick={() => {
+                          const ticket = selectedTicket;
                           setSelectedTicket(null);
-                          setTicketToResolveBattery(selectedTicket);
-                          setBatteryRechargeable('');
-                          setBatteryPrice('');
+                          // Small delay to allow first dialog to close and focus to reset
+                          setTimeout(() => {
+                            setTicketToResolveBattery(ticket);
+                            setBatteryRechargeable('');
+                            setBatteryPrice('');
+                          }, 100);
                         }}
                       >
                         Resolve Battery
@@ -831,11 +848,15 @@ export default function Services() {
                       <Button 
                         variant="outline"
                         onClick={() => {
+                          const ticket = selectedTicket;
                           setSelectedTicket(null);
-                          setTicketToResolveInvertor(selectedTicket);
-                          setInvertorResolved('');
-                          setInvertorIssueDescription('');
-                          setInvertorPrice('');
+                          // Small delay to allow first dialog to close and focus to reset
+                          setTimeout(() => {
+                            setTicketToResolveInvertor(ticket);
+                            setInvertorResolved('');
+                            setInvertorIssueDescription('');
+                            setInvertorPrice('');
+                          }, 100);
                         }}
                       >
                         Resolve Invertor
@@ -893,7 +914,9 @@ export default function Services() {
                   step="0.01"
                   value={batteryPrice}
                   onChange={(e) => setBatteryPrice(e.target.value)}
+                  onWheel={(e) => e.currentTarget.blur()}
                   placeholder={batteryRechargeable === 'no' ? 'Can be 0' : 'Enter price'}
+                  autoComplete="off"
                   required
                 />
                 {batteryRechargeable === 'no' && (
@@ -954,7 +977,9 @@ export default function Services() {
                   step="0.01"
                   value={invertorPrice}
                   onChange={(e) => setInvertorPrice(e.target.value)}
+                  onWheel={(e) => e.currentTarget.blur()}
                   placeholder={invertorResolved === 'no' ? 'Can be 0' : 'Enter price'}
+                  autoComplete="off"
                   required
                 />
                 {invertorResolved === 'no' && (
@@ -1009,6 +1034,11 @@ export default function Services() {
                   </Select>
                 </div>
                 <div className="flex justify-end gap-2">
+                  <PrintTicket 
+                    ticket={ticketToClose} 
+                    profileName={getProfileName(ticketToClose.assigned_to_battery)} 
+                    invertorProfileName={getProfileName(ticketToClose.assigned_to_invertor)}
+                  />
                   <Button type="button" variant="outline" onClick={() => setTicketToClose(null)}>
                     Cancel
                   </Button>

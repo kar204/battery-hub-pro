@@ -109,8 +109,9 @@ export default function Users() {
       toast({ title: 'Roles updated successfully' });
       setSelectedUser(null);
       fetchData();
-    } catch (error: any) {
-      toast({ title: 'Error updating roles', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      toast({ title: 'Error updating roles', description: errorMessage, variant: 'destructive' });
     }
   };
 
@@ -177,10 +178,11 @@ export default function Users() {
       setNewUserPassword('');
       setNewUserRoles([]);
       fetchData();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
       toast({ 
         title: 'Error creating user', 
-        description: error.message, 
+        description: errorMessage, 
         variant: 'destructive' 
       });
     } finally {

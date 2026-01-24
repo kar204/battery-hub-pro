@@ -1,6 +1,8 @@
+import { ServiceTicket, WarehouseStock, Product } from '@/types/database';
+
 // CSV Export utility functions
 
-export function downloadCSV(data: Record<string, any>[], filename: string) {
+export function downloadCSV(data: Record<string, unknown>[], filename: string) {
   if (data.length === 0) return;
   
   const headers = Object.keys(data[0]);
@@ -31,7 +33,7 @@ export function downloadCSV(data: Record<string, any>[], filename: string) {
   document.body.removeChild(link);
 }
 
-export function formatTicketForExport(ticket: any, profileName: string) {
+export function formatTicketForExport(ticket: ServiceTicket, profileName: string) {
   const totalPrice = (ticket.battery_price || 0) + (ticket.invertor_price || 0);
   return {
     'Ticket Number': ticket.ticket_number || '',
@@ -51,26 +53,31 @@ export function formatTicketForExport(ticket: any, profileName: string) {
   };
 }
 
-export function formatStockForExport(item: any) {
+export function formatStockForExport(item: WarehouseStock) {
   return {
     'Product': item.product?.name || '',
     'Model': item.product?.model || '',
     'Capacity': item.product?.capacity || '-',
-    'Price (₹)': item.product?.price || 0,
     'Quantity': item.quantity,
-    'Total Value (₹)': item.quantity * (item.product?.price || 0),
     'Status': item.quantity < 5 ? 'Low Stock' : item.quantity < 20 ? 'Medium' : 'In Stock',
   };
 }
 
-export function formatDashboardStatsForExport(stats: any, date: Date) {
+interface DashboardStats {
+  openTickets: number;
+  inProgressTickets: number;
+  closedToday: number;
+  totalStock: number;
+  lowStockCount: number;
+}
+
+export function formatDashboardStatsForExport(stats: DashboardStats, date: Date) {
   return [{
     'Report Date': date.toLocaleDateString('en-IN'),
     'Open Tickets': stats.openTickets,
     'In Progress': stats.inProgressTickets,
     'Closed Today': stats.closedToday,
     'Total Stock Units': stats.totalStock,
-    'Stock Value (₹)': stats.stockValue,
     'Low Stock Items': stats.lowStockCount,
   }];
 }

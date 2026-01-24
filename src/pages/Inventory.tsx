@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Plus, Search, Package, ArrowUpCircle, ArrowDownCircle, Download, Trash2 } from 'lucide-react';
+import { Plus, Minus, Search, Package, ArrowUpCircle, ArrowDownCircle, Download, Trash2, X } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,17 +42,17 @@ export default function Inventory() {
     name: '',
     model: '',
     capacity: '',
-    price: '',
   });
 
   // Stock transfer form
   const [transferForm, setTransferForm] = useState({
-    product_id: '',
-    quantity: '',
     transaction_type: '' as TransactionType | '',
     source: '' as StockSource | '',
     remarks: '',
   });
+
+  const [transferItems, setTransferItems] = useState<{ productId: string; quantity: number }[]>([]);
+  const [selectedProductToAdd, setSelectedProductToAdd] = useState('');
 
   // Role-based restrictions
   const isWarehouseStaff = hasRole('warehouse_staff');
@@ -100,7 +100,7 @@ export default function Inventory() {
           name: productForm.name,
           model: productForm.model,
           capacity: productForm.capacity || null,
-          price: parseFloat(productForm.price) || 0,
+          price: 0, // Price removed from UI, defaulting to 0
         })
         .select()
         .single();
@@ -119,10 +119,11 @@ export default function Inventory() {
 
       toast({ title: 'Product added successfully' });
       setIsAddProductOpen(false);
-      setProductForm({ name: '', model: '', capacity: '', price: '' });
+      setProductForm({ name: '', model: '', capacity: '' });
       fetchData();
-    } catch (error: any) {
-      toast({ title: 'Error adding product', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      toast({ title: 'Error adding product', description: errorMessage, variant: 'destructive' });
     }
   };
 
@@ -147,72 +148,108 @@ export default function Inventory() {
       toast({ title: 'Product deleted successfully' });
       setProductToDelete(null);
       fetchData();
-    } catch (error: any) {
-      toast({ title: 'Error deleting product', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      toast({ title: 'Error deleting product', description: errorMessage, variant: 'destructive' });
     }
+  };
+
+  const addProductToTransfer = (productId: string) => {
+    if (!productId) return;
+    if (transferItems.some(item => item.productId === productId)) {
+      toast({ title: 'Product already added', variant: 'destructive' });
+      return;
+    }
+    setTransferItems([...transferItems, { productId, quantity: 1 }]);
+    setSelectedProductToAdd('');
+  };
+
+  const removeProductFromTransfer = (productId: string) => {
+    setTransferItems(transferItems.filter(item => item.productId !== productId));
+  };
+
+  const setTransferQuantity = (productId: string, quantity: number) => {
+    setTransferItems(transferItems.map(item => {
+      if (item.productId === productId) {
+        return { ...item, quantity: Math.max(1, quantity) };
+      }
+      return item;
+    }));
+  };
+
+  const updateTransferQuantity = (productId: string, delta: number) => {
+    setTransferItems(transferItems.map(item => {
+      if (item.productId === productId) {
+        const newQty = Math.max(1, item.quantity + delta);
+        return { ...item, quantity: newQty };
+      }
+      return item;
+    }));
   };
 
   const handleStockTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!user || !transferForm.product_id || !transferForm.transaction_type || !transferForm.source) return;
-
-    const quantity = parseInt(transferForm.quantity);
-    if (isNaN(quantity) || quantity <= 0) {
-      toast({ title: 'Invalid quantity', variant: 'destructive' });
+    if (!user || transferItems.length === 0 || !transferForm.transaction_type || !transferForm.source) {
+      toast({ title: 'Please fill all fields and add at least one product', variant: 'destructive' });
       return;
     }
 
     try {
-      // Create transaction record
-      const { error: transError } = await supabase.from('stock_transactions').insert({
-        product_id: transferForm.product_id,
-        quantity,
-        transaction_type: transferForm.transaction_type,
-        source: transferForm.source,
-        handled_by: user.id,
-        remarks: transferForm.remarks || null,
-      });
+      // Process all items
+      for (const item of transferItems) {
+        // Create transaction record
+        const { error: transError } = await supabase.from('stock_transactions').insert({
+          product_id: item.productId,
+          quantity: item.quantity,
+          transaction_type: transferForm.transaction_type,
+          source: transferForm.source,
+          handled_by: user.id,
+          remarks: transferForm.remarks || null,
+        });
 
-      if (transError) throw transError;
+        if (transError) throw transError;
 
-      // Update stock quantity
-      const currentStock = stock.find(s => s.product_id === transferForm.product_id);
-      const currentQty = currentStock?.quantity || 0;
-      const newQty = transferForm.transaction_type === 'IN' 
-        ? currentQty + quantity 
-        : Math.max(0, currentQty - quantity);
+        // Update stock quantity
+        const currentStock = stock.find(s => s.product_id === item.productId);
+        const currentQty = currentStock?.quantity || 0;
+        const newQty = transferForm.transaction_type === 'IN' 
+          ? currentQty + item.quantity 
+          : Math.max(0, currentQty - item.quantity);
 
-      if (currentStock) {
-        const { error: updateError } = await supabase
-          .from('warehouse_stock')
-          .update({ quantity: newQty })
-          .eq('id', currentStock.id);
+        if (currentStock) {
+          const { error: updateError } = await supabase
+            .from('warehouse_stock')
+            .update({ quantity: newQty })
+            .eq('id', currentStock.id);
 
-        if (updateError) throw updateError;
+          if (updateError) throw updateError;
+        }
       }
 
       toast({ 
-        title: `Stock ${transferForm.transaction_type === 'IN' ? 'added' : 'removed'} successfully`,
-        description: `${quantity} units ${transferForm.transaction_type === 'IN' ? 'added to' : 'removed from'} inventory`
+        title: 'Stock transfer completed',
+        description: `Processed ${transferItems.length} items successfully`
       });
       setIsStockTransferOpen(false);
-      setTransferForm({ product_id: '', quantity: '', transaction_type: '', source: '', remarks: '' });
+      setTransferForm({ transaction_type: 'IN', source: '', remarks: '' });
+      setTransferItems([]);
       fetchData();
-    } catch (error: any) {
-      toast({ title: 'Error processing transfer', description: error.message, variant: 'destructive' });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+      toast({ title: 'Error processing transfer', description: errorMessage, variant: 'destructive' });
     }
-  };
-
-  const handleExportAll = () => {
-    const data = filteredStock.map(item => formatStockForExport(item));
-    downloadCSV(data, `inventory-${new Date().toISOString().split('T')[0]}`);
   };
 
   const filteredStock = stock.filter(item =>
     item.product?.name?.toLowerCase().includes(search.toLowerCase()) ||
     item.product?.model?.toLowerCase().includes(search.toLowerCase())
   );
+
+  const handleExportAll = () => {
+    const data = filteredStock.map(item => formatStockForExport(item));
+    downloadCSV(data, `inventory-${new Date().toISOString().split('T')[0]}`);
+  };
 
   const canManageProducts = hasAnyRole(['admin', 'procurement_staff']);
   const canManageStock = hasAnyRole(['admin', 'warehouse_staff', 'procurement_staff']);
@@ -307,17 +344,6 @@ export default function Inventory() {
                         />
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="product-price">Price (₹)</Label>
-                      <Input
-                        id="product-price"
-                        type="number"
-                        step="0.01"
-                        value={productForm.price}
-                        onChange={(e) => setProductForm({ ...productForm, price: e.target.value })}
-                        required
-                      />
-                    </div>
                     <Button type="submit" className="w-full">Add Product</Button>
                   </form>
                 </DialogContent>
@@ -348,24 +374,6 @@ export default function Inventory() {
                     </DialogTitle>
                   </DialogHeader>
                   <form onSubmit={handleStockTransfer} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Product</Label>
-                      <Select 
-                        value={transferForm.product_id} 
-                        onValueChange={(value) => setTransferForm({ ...transferForm, product_id: value })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select product" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {products.map((product) => (
-                            <SelectItem key={product.id} value={product.id}>
-                              {product.name} - {product.model}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Transaction Type</Label>
@@ -400,17 +408,78 @@ export default function Inventory() {
                         </Select>
                       </div>
                     </div>
+
                     <div className="space-y-2">
-                      <Label htmlFor="quantity">Quantity</Label>
-                      <Input
-                        id="quantity"
-                        type="number"
-                        min="1"
-                        value={transferForm.quantity}
-                        onChange={(e) => setTransferForm({ ...transferForm, quantity: e.target.value })}
-                        required
-                      />
+                      <Label>Add Products</Label>
+                      <Select 
+                        value={selectedProductToAdd} 
+                        onValueChange={addProductToTransfer}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select product to add" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {products.map((product) => (
+                            <SelectItem key={product.id} value={product.id}>
+                              {product.name} - {product.model}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
+
+                    {transferItems.length > 0 && (
+                      <div className="space-y-2 max-h-[300px] overflow-y-auto border rounded-md p-2">
+                        {transferItems.map((item) => {
+                          const product = products.find(p => p.id === item.productId);
+                          return (
+                            <div key={item.productId} className="flex items-center justify-between p-2 bg-muted/50 rounded-md">
+                              <div className="flex-1">
+                                <p className="font-medium text-sm">{product?.name}</p>
+                                <p className="text-xs text-muted-foreground">{product?.model}</p>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => updateTransferQuantity(item.productId, -1)}
+                                >
+                                  <Minus className="h-4 w-4" />
+                                </Button>
+                                <Input
+                                  type="number"
+                                  min="1"
+                                  value={item.quantity}
+                                  onChange={(e) => setTransferQuantity(item.productId, parseInt(e.target.value) || 1)}
+                                  className="w-20 text-center h-8 mx-1"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => updateTransferQuantity(item.productId, 1)}
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive hover:text-destructive"
+                                  onClick={() => removeProductFromTransfer(item.productId)}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     <div className="space-y-2">
                       <Label htmlFor="remarks">Remarks (Optional)</Label>
                       <Textarea
@@ -453,9 +522,7 @@ export default function Inventory() {
                     <TableHead>Product</TableHead>
                     <TableHead>Model</TableHead>
                     <TableHead>Capacity</TableHead>
-                    <TableHead className="text-right">Price</TableHead>
                     <TableHead className="text-right">Quantity</TableHead>
-                    <TableHead className="text-right">Total Value</TableHead>
                     <TableHead>Status</TableHead>
                     {canDeleteProducts && <TableHead className="w-[50px]"></TableHead>}
                   </TableRow>
@@ -463,7 +530,7 @@ export default function Inventory() {
                 <TableBody>
                   {filteredStock.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={canDeleteProducts ? 8 : 7} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={canDeleteProducts ? 6 : 5} className="text-center text-muted-foreground py-8">
                         No products in inventory
                       </TableCell>
                     </TableRow>
@@ -473,11 +540,7 @@ export default function Inventory() {
                         <TableCell className="font-medium">{item.product?.name}</TableCell>
                         <TableCell>{item.product?.model}</TableCell>
                         <TableCell>{item.product?.capacity || '-'}</TableCell>
-                        <TableCell className="text-right">₹{Number(item.product?.price || 0).toLocaleString('en-IN')}</TableCell>
                         <TableCell className="text-right font-medium">{item.quantity}</TableCell>
-                        <TableCell className="text-right">
-                          ₹{(item.quantity * Number(item.product?.price || 0)).toLocaleString('en-IN')}
-                        </TableCell>
                         <TableCell>
                           {item.quantity < 5 ? (
                             <Badge variant="destructive" className="gap-1">

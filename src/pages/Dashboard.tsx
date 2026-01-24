@@ -15,7 +15,6 @@ export default function Dashboard() {
     openTickets: 0,
     closedToday: 0,
     totalStock: 0,
-    stockValue: 0,
     lowStockCount: 0,
     inProgressTickets: 0,
   });
@@ -81,18 +80,13 @@ export default function Dashboard() {
         .from('warehouse_stock')
         .select('*, product:products(*)');
 
-      const lowStock = (stockData || []).filter((s: any) => s.quantity < 5);
-      const totalStock = (stockData || []).reduce((acc: number, s: any) => acc + s.quantity, 0);
-      const stockValue = (stockData || []).reduce((acc: number, s: any) => {
-        const price = s.product?.price || 0;
-        return acc + (s.quantity * Number(price));
-      }, 0);
+      const lowStock = (stockData || []).filter((s: WarehouseStock & { product: Product }) => s.quantity < 5);
+      const totalStock = (stockData || []).reduce((acc: number, s: WarehouseStock & { product: Product }) => acc + s.quantity, 0);
 
       setStats({
         openTickets: openTickets?.length || 0,
         closedToday: closedToday?.length || 0,
         totalStock,
-        stockValue,
         lowStockCount: lowStock.length,
         inProgressTickets: inProgressTickets?.length || 0,
       });
@@ -139,7 +133,7 @@ export default function Dashboard() {
           </Button>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <StatsCard
             title="Open Tickets"
             value={stats.openTickets}
@@ -167,13 +161,6 @@ export default function Dashboard() {
             icon={Package}
             variant="default"
             description="Units in warehouse"
-          />
-          <StatsCard
-            title="Stock Value"
-            value={`₹${stats.stockValue.toLocaleString('en-IN')}`}
-            icon={IndianRupee}
-            variant="default"
-            description="Total inventory value"
           />
           <StatsCard
             title="Low Stock"

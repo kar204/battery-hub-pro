@@ -26,6 +26,8 @@ export function PrintTicket({ ticket, profileName, invertorProfileName }: PrintT
       });
     } catch (error) {
       console.error('Failed to load logo:', error);
+      // Fallback: try to use the image directly if fetching fails (though this might not work in all print contexts due to CORS/loading)
+      // But for local same-origin, it might help if fetch fails for some reason.
     }
 
     const printWindow = window.open('', '_blank');
@@ -158,7 +160,10 @@ export function PrintTicket({ ticket, profileName, invertorProfileName }: PrintT
         <body>
           <div class="header">
             <div class="header-logo">
-              ${logoDataUrl ? `<img src="${logoDataUrl}" alt="Afsal Traders logo" />` : ''}
+              ${logoDataUrl 
+                ? `<img src="${logoDataUrl}" alt="Afsal Traders logo" />` 
+                : `<img src="${window.location.origin}/afsal-logo.png" alt="Afsal Traders logo" onerror="this.style.display='none'" />`
+              }
             </div>
             <div class="header-text">
               <h1>SERVICE TICKET</h1>
@@ -262,8 +267,11 @@ export function PrintTicket({ ticket, profileName, invertorProfileName }: PrintT
 
     printWindow.document.close();
     printWindow.focus();
-    printWindow.print();
-    printWindow.close();
+    // Wait for image to load before printing
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 500);
   };
 
   return (

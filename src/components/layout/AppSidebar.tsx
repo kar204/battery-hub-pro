@@ -4,7 +4,9 @@ import {
   Package, 
   ClipboardList, 
   Users,
-  LogOut
+  LogOut,
+  Store,
+  Recycle
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -24,8 +26,10 @@ import { Button } from '@/components/ui/button';
 
 const menuItems = [
   { title: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', roles: ['admin', 'counter_staff', 'service_agent', 'warehouse_staff', 'procurement_staff'] },
-  { title: 'Service Tickets', icon: Wrench, path: '/services', roles: ['admin', 'counter_staff', 'service_agent'] },
+  { title: 'Service Tickets', icon: Wrench, path: '/services', roles: ['admin', 'counter_staff', 'service_agent', 'sp_battery', 'sp_invertor'] },
   { title: 'Inventory', icon: Package, path: '/inventory', roles: ['admin', 'warehouse_staff', 'procurement_staff'] },
+  { title: 'Shop', icon: Store, path: '/shop', roles: ['admin', 'counter_staff', 'warehouse_staff'] },
+  { title: 'Scrap', icon: Recycle, path: '/scrap', roles: ['admin', 'counter_staff'] },
   { title: 'Transactions', icon: ClipboardList, path: '/transactions', roles: ['admin', 'warehouse_staff', 'procurement_staff'] },
   { title: 'Users', icon: Users, path: '/users', roles: ['admin'] },
 ];

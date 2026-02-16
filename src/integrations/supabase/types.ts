@@ -459,6 +459,8 @@ export type Database = {
         | "procurement_staff"
         | "sp_battery"
         | "sp_invertor"
+        | "seller"
+        | "scrap_manager"
       service_status: "OPEN" | "IN_PROGRESS" | "RESOLVED" | "CLOSED"
       stock_source: "SHOP" | "SUPPLIER" | "WAREHOUSE"
       transaction_type: "IN" | "OUT"
@@ -597,6 +599,8 @@ export const Constants = {
         "procurement_staff",
         "sp_battery",
         "sp_invertor",
+        "seller",
+        "scrap_manager",
       ],
       service_status: ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"],
       stock_source: ["SHOP", "SUPPLIER", "WAREHOUSE"],

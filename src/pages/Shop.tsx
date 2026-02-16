@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Search, ShoppingCart, Package, Plus, Minus, X } from 'lucide-react';
+import { Search, ShoppingCart, Package, Plus, Minus, X, History } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { format } from 'date-fns';
 
 interface ShopStockItem {
   id: string;
@@ -30,10 +31,26 @@ interface ShopStockItem {
 
 interface SaleItem {
   product_type: string;
-  model_number: string;
+  product_id: string;
   price: string;
-  product_id: string | null;
   quantity: number;
+}
+
+interface SaleRecord {
+  id: string;
+  customer_name: string;
+  sold_by: string;
+  created_at: string;
+  items?: SaleItemRecord[];
+}
+
+interface SaleItemRecord {
+  id: string;
+  product_type: string;
+  model_number: string;
+  price: number | null;
+  quantity: number;
+  product_id: string | null;
 }
 
 export default function Shop() {
@@ -44,8 +61,8 @@ export default function Shop() {
   const [search, setSearch] = useState('');
   const [isSaleOpen, setIsSaleOpen] = useState(false);
   const [customerName, setCustomerName] = useState('');
-  const [saleItems, setSaleItems] = useState<SaleItem[]>([{ product_type: 'Battery', model_number: '', price: '', product_id: null, quantity: 1 }]);
-  const [products, setProducts] = useState<any[]>([]);
+  const [saleItems, setSaleItems] = useState<SaleItem[]>([{ product_type: 'Battery', product_id: '', price: '', quantity: 1 }]);
+  const [salesHistory, setSalesHistory] = useState<SaleRecord[]>([]);
 
   const canRecordSale = hasAnyRole(['admin', 'counter_staff']);
 
@@ -60,12 +77,33 @@ export default function Shop() {
 
   const fetchData = async () => {
     try {
-      const [stockRes, productsRes] = await Promise.all([
+      const [stockRes, salesRes] = await Promise.all([
         supabase.from('shop_stock').select('*, product:products(id, name, model, capacity, category)'),
-        supabase.from('products').select('*'),
+        supabase.from('shop_sales').select('*').order('created_at', { ascending: false }).limit(50),
       ]);
-      setShopStock((stockRes.data as ShopStockItem[]) || []);
-      setProducts(productsRes.data || []);
+      const stockData = (stockRes.data as ShopStockItem[]) || [];
+      setShopStock(stockData);
+
+      // Fetch sale items for each sale
+      const sales = (salesRes.data as SaleRecord[]) || [];
+      if (sales.length > 0) {
+        const saleIds = sales.map(s => s.id);
+        const { data: itemsData } = await supabase
+          .from('shop_sale_items')
+          .select('*')
+          .in('sale_id', saleIds);
+
+        const itemsBySale: Record<string, SaleItemRecord[]> = {};
+        (itemsData || []).forEach((item: any) => {
+          if (!itemsBySale[item.sale_id]) itemsBySale[item.sale_id] = [];
+          itemsBySale[item.sale_id].push(item);
+        });
+
+        sales.forEach(sale => {
+          sale.items = itemsBySale[sale.id] || [];
+        });
+      }
+      setSalesHistory(sales);
     } catch (error) {
       console.error('Error fetching shop data:', error);
     } finally {
@@ -74,7 +112,7 @@ export default function Shop() {
   };
 
   const addSaleItem = () => {
-    setSaleItems([...saleItems, { product_type: 'Battery', model_number: '', price: '', product_id: null, quantity: 1 }]);
+    setSaleItems([...saleItems, { product_type: 'Battery', product_id: '', price: '', quantity: 1 }]);
   };
 
   const removeSaleItem = (index: number) => {
@@ -82,10 +120,22 @@ export default function Shop() {
     setSaleItems(saleItems.filter((_, i) => i !== index));
   };
 
-  const updateSaleItem = (index: number, field: keyof SaleItem, value: string | number | null) => {
+  const updateSaleItem = (index: number, field: keyof SaleItem, value: string | number) => {
     const updated = [...saleItems];
     (updated[index] as any)[field] = value;
+    // When product changes, auto-set the product_type
+    if (field === 'product_id') {
+      const stock = shopStock.find(s => s.product_id === value);
+      if (stock?.product?.category) {
+        updated[index].product_type = stock.product.category;
+      }
+    }
     setSaleItems(updated);
+  };
+
+  // Filter available stock by product type for the dropdown
+  const getAvailableProducts = (productType: string) => {
+    return shopStock.filter(s => s.product?.category === productType && s.quantity > 0);
   };
 
   const handleRecordSale = async (e: React.FormEvent) => {
@@ -94,9 +144,9 @@ export default function Shop() {
       toast({ title: 'Customer name is required', variant: 'destructive' });
       return;
     }
-    const validItems = saleItems.filter(item => item.model_number.trim());
+    const validItems = saleItems.filter(item => item.product_id);
     if (validItems.length === 0) {
-      toast({ title: 'Add at least one item', variant: 'destructive' });
+      toast({ title: 'Select at least one product', variant: 'destructive' });
       return;
     }
 
@@ -109,31 +159,31 @@ export default function Shop() {
       if (saleError) throw saleError;
 
       for (const item of validItems) {
+        const stockItem = shopStock.find(s => s.product_id === item.product_id);
+        const modelNumber = stockItem?.product ? `${stockItem.product.name} - ${stockItem.product.model}` : '';
+
         const { error: itemError } = await supabase.from('shop_sale_items').insert({
           sale_id: sale.id,
           product_type: item.product_type,
-          model_number: item.model_number,
+          model_number: modelNumber,
           price: item.price ? parseFloat(item.price) : null,
           product_id: item.product_id,
           quantity: item.quantity,
         });
         if (itemError) throw itemError;
 
-        // Deduct from shop stock if linked to a product
-        if (item.product_id) {
-          const stockItem = shopStock.find(s => s.product_id === item.product_id);
-          if (stockItem) {
-            await supabase.from('shop_stock')
-              .update({ quantity: Math.max(0, stockItem.quantity - item.quantity) })
-              .eq('product_id', item.product_id);
-          }
+        // Deduct from shop stock
+        if (stockItem) {
+          await supabase.from('shop_stock')
+            .update({ quantity: Math.max(0, stockItem.quantity - item.quantity) })
+            .eq('product_id', item.product_id);
         }
       }
 
       toast({ title: 'Sale recorded successfully' });
       setIsSaleOpen(false);
       setCustomerName('');
-      setSaleItems([{ product_type: 'Battery', model_number: '', price: '', product_id: null, quantity: 1 }]);
+      setSaleItems([{ product_type: 'Battery', product_id: '', price: '', quantity: 1 }]);
       fetchData();
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'An error occurred';
@@ -227,22 +277,35 @@ export default function Shop() {
                             <X className="h-3 w-3" />
                           </Button>
                         )}
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <Label className="text-xs">Product Type</Label>
-                            <Select value={item.product_type} onValueChange={v => updateSaleItem(idx, 'product_type', v)}>
-                              <SelectTrigger><SelectValue /></SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="Battery">Battery</SelectItem>
-                                <SelectItem value="Inverter">Inverter</SelectItem>
-                                <SelectItem value="UPS">UPS</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-xs">Model Number</Label>
-                            <Input value={item.model_number} onChange={e => updateSaleItem(idx, 'model_number', e.target.value)} required />
-                          </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Product Type</Label>
+                          <Select value={item.product_type} onValueChange={v => {
+                            updateSaleItem(idx, 'product_type', v);
+                            updateSaleItem(idx, 'product_id', '');
+                          }}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="Battery">Battery</SelectItem>
+                              <SelectItem value="Inverter">Inverter</SelectItem>
+                              <SelectItem value="UPS">UPS</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Product (from stock)</Label>
+                          <Select value={item.product_id} onValueChange={v => updateSaleItem(idx, 'product_id', v)}>
+                            <SelectTrigger><SelectValue placeholder="Select product" /></SelectTrigger>
+                            <SelectContent>
+                              {getAvailableProducts(item.product_type).map(s => (
+                                <SelectItem key={s.product_id} value={s.product_id}>
+                                  {s.product?.name} - {s.product?.model} (Qty: {s.quantity})
+                                </SelectItem>
+                              ))}
+                              {getAvailableProducts(item.product_type).length === 0 && (
+                                <div className="px-2 py-1.5 text-sm text-muted-foreground">No stock available</div>
+                              )}
+                            </SelectContent>
+                          </Select>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1">
@@ -307,10 +370,14 @@ export default function Shop() {
         ) : (
           <Tabs defaultValue="all">
             <TabsList>
-              <TabsTrigger value="all">All</TabsTrigger>
+              <TabsTrigger value="all">All Stock</TabsTrigger>
               <TabsTrigger value="Battery">Batteries</TabsTrigger>
               <TabsTrigger value="Inverter">Inverters</TabsTrigger>
               <TabsTrigger value="UPS">UPS</TabsTrigger>
+              <TabsTrigger value="history">
+                <History className="h-3 w-3 mr-1" />
+                Sales History
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="all">
               <Card><CardContent className="pt-6">{renderStockTable(shopStock.filter(item =>
@@ -326,6 +393,57 @@ export default function Shop() {
             </TabsContent>
             <TabsContent value="UPS">
               <Card><CardContent className="pt-6">{renderStockTable(filterByCategory('UPS'))}</CardContent></Card>
+            </TabsContent>
+            <TabsContent value="history">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <History className="h-5 w-5" />
+                    Sales History
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Items</TableHead>
+                        <TableHead className="text-right">Total (₹)</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {salesHistory.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center text-muted-foreground py-8">No sales recorded yet</TableCell>
+                        </TableRow>
+                      ) : salesHistory.map(sale => {
+                        const total = (sale.items || []).reduce((s, i) => s + (i.price || 0) * i.quantity, 0);
+                        return (
+                          <TableRow key={sale.id}>
+                            <TableCell>{format(new Date(sale.created_at), 'dd/MM/yyyy HH:mm')}</TableCell>
+                            <TableCell className="font-medium">{sale.customer_name}</TableCell>
+                            <TableCell>
+                              <div className="space-y-1">
+                                {(sale.items || []).map(item => (
+                                  <div key={item.id} className="text-sm">
+                                    <Badge variant="outline" className="mr-1 text-xs">{item.product_type}</Badge>
+                                    {item.model_number} × {item.quantity}
+                                    {item.price ? ` — ₹${item.price.toLocaleString('en-IN')}` : ''}
+                                  </div>
+                                ))}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              {total > 0 ? `₹${total.toLocaleString('en-IN')}` : '-'}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
             </TabsContent>
           </Tabs>
         )}

@@ -69,7 +69,6 @@ export interface Product {
   model: string;
   capacity: string | null;
   category: string;
-  price: number;
   created_at: string;
   updated_at: string;
 }

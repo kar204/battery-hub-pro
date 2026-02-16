@@ -44,6 +44,7 @@ export default function Inventory() {
     model: '',
     capacity: '',
     category: 'Battery',
+    initialQuantity: '',
   });
 
   // Stock transfer form
@@ -103,26 +104,26 @@ export default function Inventory() {
           model: productForm.model,
           capacity: productForm.capacity || null,
           category: productForm.category,
-          price: 0,
         })
         .select()
         .single();
 
       if (productError) throw productError;
 
-      // Create initial stock entry
+      // Create initial stock entry with optional quantity
+      const initialQty = parseInt(productForm.initialQuantity) || 0;
       const { error: stockError } = await supabase
         .from('warehouse_stock')
         .insert({
           product_id: product.id,
-          quantity: 0,
+          quantity: initialQty,
         });
 
       if (stockError) throw stockError;
 
       toast({ title: 'Product added successfully' });
       setIsAddProductOpen(false);
-      setProductForm({ name: '', model: '', capacity: '', category: 'Battery' });
+      setProductForm({ name: '', model: '', capacity: '', category: 'Battery', initialQuantity: '' });
       fetchData();
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
@@ -423,6 +424,19 @@ export default function Inventory() {
                         />
                       </div>
                     </div>
+                    {isAdmin && (
+                      <div className="space-y-2">
+                        <Label htmlFor="product-quantity">Initial Warehouse Quantity (Optional)</Label>
+                        <Input
+                          id="product-quantity"
+                          type="number"
+                          min="0"
+                          value={productForm.initialQuantity}
+                          onChange={(e) => setProductForm({ ...productForm, initialQuantity: e.target.value })}
+                          placeholder="0"
+                        />
+                      </div>
+                    )}
                     <Button type="submit" className="w-full">Add Product</Button>
                   </form>
                 </DialogContent>

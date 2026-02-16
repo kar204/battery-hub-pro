@@ -23,6 +23,8 @@ const allRoles: { value: AppRole; label: string; description: string }[] = [
   { value: 'service_agent', label: 'Service Agent (Legacy)', description: 'Work on assigned tickets' },
   { value: 'warehouse_staff', label: 'Warehouse Staff', description: 'Manage inventory stock' },
   { value: 'procurement_staff', label: 'Procurement Staff', description: 'Add products and manage procurement' },
+  { value: 'seller', label: 'Seller', description: 'View shop and record sales' },
+  { value: 'scrap_manager', label: 'Scrap Manager', description: 'View and manage scrap entries' },
 ];
 
 const roleColors: Record<AppRole, string> = {
@@ -33,6 +35,8 @@ const roleColors: Record<AppRole, string> = {
   service_agent: 'bg-chart-2/20 text-chart-2 border-chart-2/30',
   warehouse_staff: 'bg-chart-1/20 text-chart-1 border-chart-1/30',
   procurement_staff: 'bg-chart-4/20 text-chart-4 border-chart-4/30',
+  seller: 'bg-chart-5/20 text-chart-5 border-chart-5/30',
+  scrap_manager: 'bg-chart-3/20 text-chart-3 border-chart-3/30',
 };
 
 export default function Users() {

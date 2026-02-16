@@ -64,7 +64,7 @@ export default function Shop() {
   const [saleItems, setSaleItems] = useState<SaleItem[]>([{ product_type: 'Battery', product_id: '', price: '', quantity: 1 }]);
   const [salesHistory, setSalesHistory] = useState<SaleRecord[]>([]);
 
-  const canRecordSale = hasAnyRole(['admin', 'counter_staff']);
+  const canRecordSale = hasAnyRole(['admin', 'counter_staff', 'seller']);
 
   useEffect(() => {
     fetchData();

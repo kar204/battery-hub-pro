@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Plus, Minus, Search, Package, ArrowUpCircle, ArrowDownCircle, Download, Trash2, X } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,6 +43,7 @@ export default function Inventory() {
     name: '',
     model: '',
     capacity: '',
+    category: 'Battery',
   });
 
   // Stock transfer form
@@ -100,7 +102,8 @@ export default function Inventory() {
           name: productForm.name,
           model: productForm.model,
           capacity: productForm.capacity || null,
-          price: 0, // Price removed from UI, defaulting to 0
+          category: productForm.category,
+          price: 0,
         })
         .select()
         .single();
@@ -119,7 +122,7 @@ export default function Inventory() {
 
       toast({ title: 'Product added successfully' });
       setIsAddProductOpen(false);
-      setProductForm({ name: '', model: '', capacity: '' });
+      setProductForm({ name: '', model: '', capacity: '', category: 'Battery' });
       fetchData();
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
@@ -246,6 +249,71 @@ export default function Inventory() {
     item.product?.model?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const filterByCategory = (category: string) =>
+    filteredStock.filter(item => (item.product as any)?.category === category);
+
+  const renderStockTable = (items: WarehouseStock[]) => (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Product</TableHead>
+          <TableHead>Model</TableHead>
+          <TableHead>Capacity</TableHead>
+          <TableHead className="text-right">Quantity</TableHead>
+          <TableHead>Status</TableHead>
+          {canDeleteProducts && <TableHead className="w-[50px]"></TableHead>}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {items.length === 0 ? (
+          <TableRow>
+            <TableCell colSpan={canDeleteProducts ? 6 : 5} className="text-center text-muted-foreground py-8">
+              No products in this category
+            </TableCell>
+          </TableRow>
+        ) : (
+          items.map((item) => (
+            <TableRow key={item.id}>
+              <TableCell className="font-medium">{item.product?.name}</TableCell>
+              <TableCell>{item.product?.model}</TableCell>
+              <TableCell>{item.product?.capacity || '-'}</TableCell>
+              <TableCell className="text-right font-medium">{item.quantity}</TableCell>
+              <TableCell>
+                {item.quantity < 5 ? (
+                  <Badge variant="destructive" className="gap-1">
+                    <ArrowDownCircle className="h-3 w-3" />
+                    Low Stock
+                  </Badge>
+                ) : item.quantity < 20 ? (
+                  <Badge variant="secondary" className="gap-1">
+                    Medium
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="gap-1 bg-chart-4/20 text-chart-4 border-chart-4/30">
+                    <ArrowUpCircle className="h-3 w-3" />
+                    In Stock
+                  </Badge>
+                )}
+              </TableCell>
+              {canDeleteProducts && (
+                <TableCell>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive hover:text-destructive"
+                    onClick={() => item.product && setProductToDelete(item.product)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </TableCell>
+              )}
+            </TableRow>
+          ))
+        )}
+      </TableBody>
+    </Table>
+  );
+
   const handleExportAll = () => {
     const data = filteredStock.map(item => formatStockForExport(item));
     downloadCSV(data, `inventory-${new Date().toISOString().split('T')[0]}`);
@@ -323,6 +391,17 @@ export default function Inventory() {
                         onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
                         required
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Category</Label>
+                      <Select value={productForm.category} onValueChange={(v) => setProductForm({ ...productForm, category: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Battery">Battery</SelectItem>
+                          <SelectItem value="Inverter">Inverter</SelectItem>
+                          <SelectItem value="UPS">UPS</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
@@ -511,72 +590,26 @@ export default function Inventory() {
             <div className="animate-pulse text-muted-foreground">Loading inventory...</div>
           </div>
         ) : (
-          <Card>
-            <CardHeader>
-              <CardTitle>Current Stock</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Model</TableHead>
-                    <TableHead>Capacity</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
-                    <TableHead>Status</TableHead>
-                    {canDeleteProducts && <TableHead className="w-[50px]"></TableHead>}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredStock.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={canDeleteProducts ? 6 : 5} className="text-center text-muted-foreground py-8">
-                        No products in inventory
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredStock.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="font-medium">{item.product?.name}</TableCell>
-                        <TableCell>{item.product?.model}</TableCell>
-                        <TableCell>{item.product?.capacity || '-'}</TableCell>
-                        <TableCell className="text-right font-medium">{item.quantity}</TableCell>
-                        <TableCell>
-                          {item.quantity < 5 ? (
-                            <Badge variant="destructive" className="gap-1">
-                              <ArrowDownCircle className="h-3 w-3" />
-                              Low Stock
-                            </Badge>
-                          ) : item.quantity < 20 ? (
-                            <Badge variant="secondary" className="gap-1">
-                              Medium
-                            </Badge>
-                          ) : (
-                            <Badge variant="outline" className="gap-1 bg-chart-4/20 text-chart-4 border-chart-4/30">
-                              <ArrowUpCircle className="h-3 w-3" />
-                              In Stock
-                            </Badge>
-                          )}
-                        </TableCell>
-                        {canDeleteProducts && (
-                          <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive"
-                              onClick={() => item.product && setProductToDelete(item.product)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </TableCell>
-                        )}
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <Tabs defaultValue="all">
+            <TabsList>
+              <TabsTrigger value="all">All ({filteredStock.length})</TabsTrigger>
+              <TabsTrigger value="Battery">Batteries ({filterByCategory('Battery').length})</TabsTrigger>
+              <TabsTrigger value="Inverter">Inverters ({filterByCategory('Inverter').length})</TabsTrigger>
+              <TabsTrigger value="UPS">UPS ({filterByCategory('UPS').length})</TabsTrigger>
+            </TabsList>
+            <TabsContent value="all">
+              <Card><CardHeader><CardTitle>All Stock</CardTitle></CardHeader><CardContent>{renderStockTable(filteredStock)}</CardContent></Card>
+            </TabsContent>
+            <TabsContent value="Battery">
+              <Card><CardHeader><CardTitle>Batteries</CardTitle></CardHeader><CardContent>{renderStockTable(filterByCategory('Battery'))}</CardContent></Card>
+            </TabsContent>
+            <TabsContent value="Inverter">
+              <Card><CardHeader><CardTitle>Inverters</CardTitle></CardHeader><CardContent>{renderStockTable(filterByCategory('Inverter'))}</CardContent></Card>
+            </TabsContent>
+            <TabsContent value="UPS">
+              <Card><CardHeader><CardTitle>UPS</CardTitle></CardHeader><CardContent>{renderStockTable(filterByCategory('UPS'))}</CardContent></Card>
+            </TabsContent>
+          </Tabs>
         )}
 
         {/* Delete Confirmation Dialog */}

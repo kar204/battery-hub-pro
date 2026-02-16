@@ -17,6 +17,7 @@ export type Database = {
       products: {
         Row: {
           capacity: string | null
+          category: string
           created_at: string
           id: string
           model: string
@@ -26,6 +27,7 @@ export type Database = {
         }
         Insert: {
           capacity?: string | null
+          category?: string
           created_at?: string
           id?: string
           model: string
@@ -35,6 +37,7 @@ export type Database = {
         }
         Update: {
           capacity?: string | null
+          category?: string
           created_at?: string
           id?: string
           model?: string
@@ -71,6 +74,45 @@ export type Database = {
           name?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      scrap_entries: {
+        Row: {
+          created_at: string
+          customer_name: string
+          id: string
+          marked_out_at: string | null
+          marked_out_by: string | null
+          recorded_by: string
+          scrap_item: string
+          scrap_model: string
+          scrap_value: number
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          customer_name: string
+          id?: string
+          marked_out_at?: string | null
+          marked_out_by?: string | null
+          recorded_by: string
+          scrap_item: string
+          scrap_model: string
+          scrap_value?: number
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          customer_name?: string
+          id?: string
+          marked_out_at?: string | null
+          marked_out_by?: string | null
+          recorded_by?: string
+          scrap_item?: string
+          scrap_model?: string
+          scrap_value?: number
+          status?: string
         }
         Relationships: []
       }
@@ -198,6 +240,104 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      shop_sale_items: {
+        Row: {
+          created_at: string
+          id: string
+          model_number: string
+          price: number | null
+          product_id: string | null
+          product_type: string
+          quantity: number
+          sale_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          model_number: string
+          price?: number | null
+          product_id?: string | null
+          product_type?: string
+          quantity?: number
+          sale_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          model_number?: string
+          price?: number | null
+          product_id?: string | null
+          product_type?: string
+          quantity?: number
+          sale_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_sale_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_sale_items_sale_id_fkey"
+            columns: ["sale_id"]
+            isOneToOne: false
+            referencedRelation: "shop_sales"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shop_sales: {
+        Row: {
+          created_at: string
+          customer_name: string
+          id: string
+          sold_by: string
+        }
+        Insert: {
+          created_at?: string
+          customer_name: string
+          id?: string
+          sold_by: string
+        }
+        Update: {
+          created_at?: string
+          customer_name?: string
+          id?: string
+          sold_by?: string
+        }
+        Relationships: []
+      }
+      shop_stock: {
+        Row: {
+          id: string
+          product_id: string
+          quantity: number
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          product_id: string
+          quantity?: number
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          product_id?: string
+          quantity?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_stock_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: true
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       stock_transactions: {
         Row: {

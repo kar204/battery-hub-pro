@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Plus, Minus, Search, Package, ArrowUpCircle, ArrowDownCircle, Download, Trash2, X } from 'lucide-react';
+import { useEffect, useState, useRef } from 'react';
+import { Plus, Minus, Search, Package, ArrowUpCircle, ArrowDownCircle, Download, Trash2, X, Upload } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { downloadCSV, formatStockForExport } from '@/utils/exportUtils';
+import * as XLSX from 'xlsx';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,6 +38,7 @@ export default function Inventory() {
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [isStockTransferOpen, setIsStockTransferOpen] = useState(false);
   const [productToDelete, setProductToDelete] = useState<Product | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Product form
   const [productForm, setProductForm] = useState({
@@ -320,6 +322,57 @@ export default function Inventory() {
     downloadCSV(data, `inventory-${new Date().toISOString().split('T')[0]}`);
   };
 
+  const handleDownloadTemplate = () => {
+    const templateData = stock.map(item => ({
+      'Product ID': item.product_id,
+      'Product Name': item.product?.name || '',
+      'Model': item.product?.model || '',
+      'Category': (item.product as any)?.category || '',
+      'Capacity': item.product?.capacity || '',
+      'Current Quantity': item.quantity,
+      'New Quantity': item.quantity,
+    }));
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Inventory');
+    XLSX.writeFile(wb, `inventory-template-${new Date().toISOString().split('T')[0]}.xlsx`);
+    toast({ title: 'Template downloaded', description: 'Edit the "New Quantity" column and re-upload' });
+  };
+
+  const handleBulkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    try {
+      const data = await file.arrayBuffer();
+      const wb = XLSX.read(data);
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json<Record<string, any>>(ws);
+
+      let updated = 0;
+      for (const row of rows) {
+        const productId = row['Product ID'];
+        const newQty = parseInt(row['New Quantity']);
+        if (!productId || isNaN(newQty) || newQty < 0) continue;
+
+        const { error } = await supabase
+          .from('warehouse_stock')
+          .update({ quantity: newQty })
+          .eq('product_id', productId);
+
+        if (!error) updated++;
+      }
+
+      toast({ title: 'Bulk update complete', description: `Updated ${updated} of ${rows.length} items` });
+      fetchData();
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'An error occurred';
+      toast({ title: 'Error processing file', description: msg, variant: 'destructive' });
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const canManageProducts = hasAnyRole(['admin', 'procurement_staff']);
   const canManageStock = hasAnyRole(['admin', 'warehouse_staff', 'procurement_staff']);
   const canDeleteProducts = hasRole('admin');
@@ -366,11 +419,30 @@ export default function Inventory() {
             <h1 className="text-3xl font-bold tracking-tight">Inventory</h1>
             <p className="text-muted-foreground">Manage warehouse stock and products</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <Button variant="outline" onClick={handleExportAll} disabled={filteredStock.length === 0}>
               <Download className="h-4 w-4 mr-2" />
               Export
             </Button>
+            {isAdmin && (
+              <>
+                <Button variant="outline" onClick={handleDownloadTemplate}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Template
+                </Button>
+                <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Bulk Upload
+                </Button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={handleBulkUpload}
+                  className="hidden"
+                />
+              </>
+            )}
             {canManageProducts && (
               <Dialog open={isAddProductOpen} onOpenChange={setIsAddProductOpen}>
                 <DialogTrigger asChild>

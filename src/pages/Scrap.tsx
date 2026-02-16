@@ -48,7 +48,7 @@ export default function Scrap() {
 
   const [form, setForm] = useState({ customer_name: '', scrap_item: '', scrap_model: '', scrap_value: '' });
 
-  const canManage = hasAnyRole(['admin', 'counter_staff']);
+  const canManage = hasAnyRole(['admin', 'counter_staff', 'scrap_manager']);
 
   useEffect(() => {
     fetchEntries();

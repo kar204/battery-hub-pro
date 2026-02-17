@@ -8,29 +8,29 @@ interface RecentTicketsProps {
 }
 
 const statusColors: Record<string, string> = {
-  OPEN: 'bg-chart-1/20 text-chart-1 border-chart-1/30',
-  IN_PROGRESS: 'bg-secondary/20 text-secondary-foreground border-secondary/30',
-  RESOLVED: 'bg-chart-4/20 text-chart-4 border-chart-4/30',
-  CLOSED: 'bg-muted text-muted-foreground border-muted',
+  OPEN: 'bg-primary/15 text-primary border-primary/20',
+  IN_PROGRESS: 'bg-chart-4/15 text-chart-4 border-chart-4/20',
+  RESOLVED: 'bg-chart-3/15 text-chart-3 border-chart-3/20',
+  CLOSED: 'bg-muted/50 text-muted-foreground border-muted',
 };
 
 export function RecentTickets({ tickets }: RecentTicketsProps) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Recent Service Tickets</CardTitle>
-      </CardHeader>
-      <CardContent>
+    <div className="glass-card rounded-2xl">
+      <div className="p-6 pb-3">
+        <h3 className="text-lg font-semibold">Recent Service Tickets</h3>
+      </div>
+      <div className="px-6 pb-6">
         {tickets.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-8">
             No service tickets yet
           </p>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {tickets.map((ticket) => (
               <div 
                 key={ticket.id} 
-                className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border border-border/50"
+                className="flex items-center justify-between p-3 rounded-xl bg-background/40 border border-border/30 transition-colors hover:bg-background/60"
               >
                 <div className="space-y-1 min-w-0 flex-1">
                   <p className="font-medium text-sm truncate">{ticket.customer_name}</p>
@@ -50,7 +50,7 @@ export function RecentTickets({ tickets }: RecentTicketsProps) {
             ))}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

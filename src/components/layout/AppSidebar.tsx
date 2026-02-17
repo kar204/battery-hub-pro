@@ -49,25 +49,25 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar>
-      <SidebarHeader className="p-4 border-b border-sidebar-border">
+    <Sidebar className="glass-sidebar border-r-0">
+      <SidebarHeader className="p-4 border-b border-border/30">
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm overflow-hidden">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 shadow-sm overflow-hidden">
             <img
               src="/afsal-logo.png"
               alt="Afsal Traders logo"
-              className="h-12 w-12 object-contain"
+              className="h-11 w-11 object-contain"
             />
           </div>
           <div className="flex flex-col">
-            <span className="font-semibold text-sidebar-foreground">BatteryPro</span>
-            <span className="text-xs text-sidebar-foreground/60">Management System</span>
+            <span className="font-semibold text-foreground">BatteryPro</span>
+            <span className="text-xs text-muted-foreground">Management System</span>
           </div>
         </div>
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-muted-foreground/70 text-xs uppercase tracking-wider">Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {filteredMenuItems.map((item) => (
@@ -75,7 +75,7 @@ export function AppSidebar() {
                   <SidebarMenuButton 
                     isActive={location.pathname === item.path}
                     onClick={() => navigate(item.path)}
-                    className="cursor-pointer"
+                    className="cursor-pointer rounded-xl transition-all duration-200 data-[active=true]:bg-primary/10 data-[active=true]:text-primary"
                   >
                     <item.icon className="h-4 w-4" />
                     <span>{item.title}</span>
@@ -86,19 +86,19 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-4 border-t border-sidebar-border">
+      <SidebarFooter className="p-4 border-t border-border/30">
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-sidebar-accent">
-              <span className="text-sm font-medium text-sidebar-accent-foreground">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10">
+              <span className="text-sm font-medium text-primary">
                 {profile?.name?.charAt(0).toUpperCase() || 'U'}
               </span>
             </div>
             <div className="flex flex-col overflow-hidden">
-              <span className="text-sm font-medium text-sidebar-foreground truncate">
+              <span className="text-sm font-medium text-foreground truncate">
                 {profile?.name || 'User'}
               </span>
-              <span className="text-xs text-sidebar-foreground/60 truncate">
+              <span className="text-xs text-muted-foreground truncate">
                 {roles.length > 0 ? roles[0].replace('_', ' ') : 'No role'}
               </span>
             </div>
@@ -107,7 +107,7 @@ export function AppSidebar() {
             variant="ghost" 
             size="sm" 
             onClick={handleSignOut}
-            className="w-full justify-start text-sidebar-foreground/80 hover:text-sidebar-foreground"
+            className="w-full justify-start text-muted-foreground hover:text-foreground rounded-xl"
           >
             <LogOut className="h-4 w-4 mr-2" />
             Sign Out

@@ -1,5 +1,4 @@
 import { LucideIcon } from 'lucide-react';
-import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 interface StatsCardProps {
@@ -12,20 +11,12 @@ interface StatsCardProps {
   variant?: 'default' | 'primary' | 'secondary' | 'warning' | 'success';
 }
 
-const variantStyles = {
-  default: 'bg-card',
-  primary: 'bg-primary/10 border-primary/20',
-  secondary: 'bg-secondary/50 border-secondary',
-  warning: 'bg-destructive/10 border-destructive/20',
-  success: 'bg-chart-4/20 border-chart-4/30',
-};
-
 const iconVariantStyles = {
-  default: 'bg-muted text-muted-foreground',
-  primary: 'bg-primary text-primary-foreground',
-  secondary: 'bg-secondary text-secondary-foreground',
-  warning: 'bg-destructive text-destructive-foreground',
-  success: 'bg-chart-4 text-foreground',
+  default: 'bg-muted/50 text-muted-foreground',
+  primary: 'bg-primary/15 text-primary',
+  secondary: 'bg-secondary/15 text-secondary',
+  warning: 'bg-destructive/15 text-destructive',
+  success: 'bg-chart-3/20 text-chart-3',
 };
 
 export function StatsCard({ 
@@ -36,24 +27,22 @@ export function StatsCard({
   variant = 'default' 
 }: StatsCardProps) {
   return (
-    <Card className={cn('transition-all hover:shadow-md', variantStyles[variant])}>
-      <CardContent className="p-6">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <p className="text-3xl font-bold tracking-tight truncate" title={String(value)}>{value}</p>
-            {description && (
-              <p className="text-xs text-muted-foreground">{description}</p>
-            )}
-          </div>
-          <div className={cn(
-            'flex h-12 w-12 items-center justify-center rounded-lg',
-            iconVariantStyles[variant]
-          )}>
-            <Icon className="h-6 w-6" />
-          </div>
+    <div className="glass-card rounded-2xl p-5 transition-all duration-300 hover:shadow-lg hover:scale-[1.02]">
+      <div className="flex items-start justify-between">
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{title}</p>
+          <p className="text-3xl font-bold tracking-tight" title={String(value)}>{value}</p>
+          {description && (
+            <p className="text-xs text-muted-foreground">{description}</p>
+          )}
         </div>
-      </CardContent>
-    </Card>
+        <div className={cn(
+          'flex h-10 w-10 items-center justify-center rounded-xl',
+          iconVariantStyles[variant]
+        )}>
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+    </div>
   );
 }
